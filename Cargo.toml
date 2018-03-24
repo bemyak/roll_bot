@@ -1,0 +1,6 @@
+[package]
+name = "roll_bot"
+version = "0.1.0"
+authors = ["Sergej Gureev <bemyak@gmail.com>"]
+
+[dependencies]
