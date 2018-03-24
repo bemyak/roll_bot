@@ -4,3 +4,6 @@ version = "0.1.0"
 authors = ["Sergej Gureev <bemyak@gmail.com>"]
 
 [dependencies]
+telegram-bot = "0.6.1"
+futures = "0.1.19"
+tokio-core = "0.1.16"
