@@ -2,11 +2,8 @@ use futures::Stream;
 use telegram_bot::*;
 use tokio_core::reactor::{Core, Handle};
 
-pub fn start(token: &str) {
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-
-    let api = Api::configure(token).build(core.handle()).unwrap();
+pub fn start(token: &str, core: &mut Core, handle: &Handle) {
+    let api = Api::configure(token).build(handle).unwrap();
 
     let future = api.stream().for_each(|update| {
         if let UpdateKind::Message(message) = update.kind {
@@ -54,7 +51,7 @@ I can:
 /item - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
 
 My code is open like your brain for the mind slayer!
-You can get it here (code, not brain): https://gitlab.com/bemyak/roll-bot
+You can get it here (code, not brain): https://gitlab.com/bemyak/roll_bot
 Suggestions and contributions are welcome.  
-"));
+").parse_mode(ParseMode::Markdown));
 }

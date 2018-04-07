@@ -1,0 +1,3 @@
+print "INSERT\n";
+print "args=", $args;
+print "\n";

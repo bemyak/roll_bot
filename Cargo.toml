@@ -3,7 +3,19 @@ name = "roll_bot"
 version = "0.1.0"
 authors = ["Sergej Gureev <bemyak@gmail.com>"]
 
+[profile.release]
+lto = true
+panic = 'abort'
+
 [dependencies]
-telegram-bot = "0.6.1"
-futures = "0.1.19"
-tokio-core = "0.1.16"
+telegram-bot = "0.6"
+log = "0.4"
+futures = "0.1"
+tokio-core = "0.1"
+hyper = "0.11"
+hyper-tls = "0.1"
+serde_json = "1.0"
+unqlite = "1.4"
+
+[dev-dependencies]
+clippy = { version = "*" }
