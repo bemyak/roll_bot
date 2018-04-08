@@ -1,8 +1,8 @@
 extern crate unqlite;
 
-use std::sync::Mutex;
 use db::unqlite::{UnQLite, document::{Jx9, UnQLiteVm}};
 use serde_json;
+use std::sync::Mutex;
 
 pub struct BotDb {
     _db: UnQLite,
