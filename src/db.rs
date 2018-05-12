@@ -1,7 +1,8 @@
 extern crate unqlite;
 
-use db::unqlite::{UnQLite, document::{Jx9, UnQLiteVm}};
-use serde_json;
+use db::unqlite::{
+    document::{Jx9, UnQLiteVm, Value}, UnQLite,
+};
 use std::sync::Mutex;
 
 pub struct BotDb {
@@ -23,7 +24,9 @@ impl BotDb {
         };
     }
 
-    pub fn save(&self, value: serde_json::Value) {
-        self.insert.lock().unwrap().exec().unwrap();
+    pub fn save(&self, value: String) {
+        let mut insert = self.insert.lock().unwrap();
+        insert.add_variable("entry", Value::string(value)).unwrap();
+        insert.exec().unwrap();
     }
 }

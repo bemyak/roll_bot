@@ -1,5 +1,7 @@
 #![cfg_attr(test, feature(plugin))]
 #![cfg_attr(test, plugin(clippy))]
+#![allow(unknown_lints)]
+#![warn(clippy)]
 extern crate futures;
 extern crate log;
 extern crate serde_json;
@@ -17,10 +19,8 @@ mod telegram;
 
 fn main() {
     let db: BotDb = BotDb::init();
-    let core: Core = Core::new().unwrap();
-    let token = env::var("TELEGRAM_BOT_TOKEN").unwrap();
-    let handle = core.handle();
-    let fetcher = Fetcher::init(core, &handle, db);
+    let fetcher = Fetcher::init(Core::new().unwrap(), &db);
     fetcher.fetch();
-    // telegram::start(&token, &mut core, &handle);
+    let token = env::var("TELEGRAM_BOT_TOKEN").unwrap();
+    telegram::start(&token, &mut Core::new().unwrap());
 }

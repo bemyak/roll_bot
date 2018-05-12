@@ -2,7 +2,8 @@ use futures::Stream;
 use telegram_bot::*;
 use tokio_core::reactor::{Core, Handle};
 
-pub fn start(token: &str, core: &mut Core, handle: &Handle) {
+pub fn start(token: &str, core: &mut Core) {
+    let ref handle = core.handle();
     let api = Api::configure(token).build(handle).unwrap();
 
     let future = api.stream().for_each(|update| {
@@ -12,6 +13,7 @@ pub fn start(token: &str, core: &mut Core, handle: &Handle) {
         Ok(())
     });
 
+    println!("Bot is ready");
     core.run(future).unwrap();
 }
 
@@ -38,7 +40,7 @@ fn echo(args: Vec<&str>, api: Api, message: &Message, _handle: &Handle) {
 }
 
 fn help(_args: Vec<&str>, api: Api, message: &Message, _handle: &Handle) {
-    api.spawn(message.chat.text("I'm the Bot. The Dungeon Bot!
+    let help = "I'm the Bot. The Dungeon Bot!
 I can help you with your Dungeons & Dragons game.
 I can:
 
@@ -50,8 +52,10 @@ I can:
 
 /item - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
 
-My code is open like your brain for the mind slayer!
+My code is open like your brain for the mind flayer!
 You can get it here (code, not brain): https://gitlab.com/bemyak/roll_bot
-Suggestions and contributions are welcome.  
-").parse_mode(ParseMode::Markdown));
+Suggestions and contributions are welcome.";
+    // TODO: ParseMode::Markdown doesn't work for some reason on large text with url
+    // api.spawn(message.chat.text(help).parse_mode(ParseMode::Markdown));
+    api.spawn(message.chat.text(help));
 }

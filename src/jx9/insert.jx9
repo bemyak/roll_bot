@@ -1,3 +1,8 @@
-print "INSERT\n";
-print "args=", $args;
-print "\n";
+// $entry is json object like https://5etools.com/data/items.json
+$obj = json_decode($entry);
+foreach($obj as $collection, $entries) {
+    db_create($collection);
+    db_store($collection, $entries);
+    $len = count($entries);
+    print "Insert ", count($entries), " to ", $collection, "\n";
+}
