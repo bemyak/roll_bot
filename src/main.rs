@@ -18,9 +18,9 @@ mod fetcher;
 mod telegram;
 
 fn main() {
+    let token = env::var("TELEGRAM_BOT_TOKEN").unwrap();
     let db: BotDb = BotDb::init();
     let fetcher = Fetcher::init(Core::new().unwrap(), &db);
     fetcher.fetch();
-    let token = env::var("TELEGRAM_BOT_TOKEN").unwrap();
     telegram::start(&token, &mut Core::new().unwrap());
 }
