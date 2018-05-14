@@ -13,12 +13,12 @@ use serde_json::Value::Object;
 use std::sync::Mutex;
 use tokio_core::reactor::Core;
 
-const BASE_URL: &'static str = "https://5etools.com/data";
-const SPELLS: &'static str = "/spells";
-const ITEMS: &'static str = "/items";
-const BESTIARY: &'static str = "/bestiary";
-const INDEX: &'static str = "/index.json";
-const EXTENSION: &'static str = ".json";
+const BASE_URL: &str = "https://5etools.com/data";
+const SPELLS: &str = "/spells";
+const ITEMS: &str = "/items";
+const BESTIARY: &str = "/bestiary";
+const INDEX: &str = "/index.json";
+const EXTENSION: &str = ".json";
 
 pub struct Fetcher<'a> {
     client: Client<HttpsConnector<HttpConnector>>,
@@ -28,14 +28,14 @@ pub struct Fetcher<'a> {
 
 impl<'a> Fetcher<'a> {
     pub fn init(core: Core, db: &'a BotDb) -> Fetcher<'a> {
-        let ref handle = core.handle();
+        let handle = &core.handle();
         let client = Client::configure()
             .connector(HttpsConnector::new(4, handle).unwrap())
             .build(handle);
         Fetcher {
-            client: client,
+            client,
             core: Mutex::new(core),
-            db: db,
+            db,
         }
     }
 

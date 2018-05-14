@@ -18,10 +18,10 @@ impl BotDb {
         let insert = db.compile(insert).unwrap();
         insert.output_to_stdout().unwrap();
 
-        return BotDb {
+        BotDb {
             _db: db,
             insert: Mutex::new(insert),
-        };
+        }
     }
 
     pub fn save(&self, value: String) {

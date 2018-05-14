@@ -3,12 +3,12 @@ use telegram_bot::*;
 use tokio_core::reactor::{Core, Handle};
 
 pub fn start(token: &str, core: &mut Core) {
-    let ref handle = core.handle();
+    let handle = &core.handle();
     let api = Api::configure(token).build(handle).unwrap();
 
     let future = api.stream().for_each(|update| {
         if let UpdateKind::Message(message) = update.kind {
-            dispatcher(api.clone(), message, &handle)
+            dispatcher(&api, &message, &handle)
         }
         Ok(())
     });
@@ -17,12 +17,12 @@ pub fn start(token: &str, core: &mut Core) {
     core.run(future).unwrap();
 }
 
-fn dispatcher(api: Api, message: Message, handle: &Handle) {
+fn dispatcher(api: &Api, message: &Message, handle: &Handle) {
     match message.kind {
         MessageKind::Text { ref data, .. } => {
             let mut args_iterator = data.as_str().split_whitespace();
-            let exec = |args: Vec<&str>, func: fn(Vec<&str>, Api, &Message, &Handle)| {
-                func(args, api, &message, handle);
+            let exec = |args: Vec<&str>, func: fn(&[&str], &Api, &Message, &Handle)| {
+                func(&args, &api, &message, handle);
             };
             match args_iterator.next() {
                 Some("/about") | Some("/help") => exec(vec![], help),
@@ -35,11 +35,11 @@ fn dispatcher(api: Api, message: Message, handle: &Handle) {
     };
 }
 
-fn echo(args: Vec<&str>, api: Api, message: &Message, _handle: &Handle) {
+fn echo(args: &[&str], api: &Api, message: &Message, _handle: &Handle) {
     api.spawn(message.chat.text(args.join(" ")));
 }
 
-fn help(_args: Vec<&str>, api: Api, message: &Message, _handle: &Handle) {
+fn help(_args: &[&str], api: &Api, message: &Message, _handle: &Handle) {
     let help = "I'm the Bot. The Dungeon Bot!
 I can help you with your Dungeons & Dragons game.
 I can:
