@@ -1,14 +1,16 @@
+use unqlite::UnQLite;
+use db;
 use futures::Stream;
 use telegram_bot::*;
 use tokio_core::reactor::{Core, Handle};
 
-pub fn start(token: &str, core: &mut Core) {
+pub fn start(token: &str, core: &mut Core, db: &UnQLite) {
     let handle = &core.handle();
     let api = Api::configure(token).build(handle).unwrap();
 
     let future = api.stream().for_each(|update| {
         if let UpdateKind::Message(message) = update.kind {
-            dispatcher(&api, &message, &handle)
+            dispatcher(&api, &message, &handle, db)
         }
         Ok(())
     });
@@ -17,15 +19,16 @@ pub fn start(token: &str, core: &mut Core) {
     core.run(future).unwrap();
 }
 
-fn dispatcher(api: &Api, message: &Message, handle: &Handle) {
+fn dispatcher(api: &Api, message: &Message, handle: &Handle, db: &UnQLite) {
     match message.kind {
         MessageKind::Text { ref data, .. } => {
             let mut args_iterator = data.as_str().split_whitespace();
-            let exec = |args: Vec<&str>, func: fn(&[&str], &Api, &Message, &Handle)| {
-                func(&args, &api, &message, handle);
+            let exec = |args: Vec<&str>, func: fn(&[&str], &Api, &Message, &Handle, db: &UnQLite)| {
+                func(&args, &api, &message, handle, db);
             };
             match args_iterator.next() {
                 Some("/about") | Some("/help") => exec(vec![], help),
+                Some("/item") => exec(vec![], search),
                 Some(_) => exec(data.as_str().split_whitespace().collect(), echo),
                 None => return,
             };
@@ -35,11 +38,16 @@ fn dispatcher(api: &Api, message: &Message, handle: &Handle) {
     };
 }
 
-fn echo(args: &[&str], api: &Api, message: &Message, _handle: &Handle) {
+fn search(_args: &[&str], api: &Api, message: &Message, _handle: &Handle, db: &UnQLite) {
+    let result = format!("{:#}", db::search(db, ""));
+    api.spawn(message.chat.text(result));
+}
+
+fn echo(args: &[&str], api: &Api, message: &Message, _handle: &Handle, _db: &UnQLite) {
     api.spawn(message.chat.text(args.join(" ")));
 }
 
-fn help(_args: &[&str], api: &Api, message: &Message, _handle: &Handle) {
+fn help(_args: &[&str], api: &Api, message: &Message, _handle: &Handle, _db: &UnQLite) {
     let help = "I'm the Bot. The Dungeon Bot!
 I can help you with your Dungeons & Dragons game.
 I can:

@@ -1,7 +1,7 @@
 extern crate hyper;
 extern crate hyper_tls;
 
-use db::BotDb;
+use unqlite::UnQLite;
 use fetcher::hyper::client::HttpConnector;
 use fetcher::hyper::Error;
 use fetcher::hyper::Response;
@@ -12,6 +12,7 @@ use serde_json;
 use serde_json::Value::Object;
 use std::sync::Mutex;
 use tokio_core::reactor::Core;
+use db;
 
 const BASE_URL: &str = "https://5etools.com/data";
 const SPELLS: &str = "/spells";
@@ -23,11 +24,11 @@ const EXTENSION: &str = ".json";
 pub struct Fetcher<'a> {
     client: Client<HttpsConnector<HttpConnector>>,
     core: Mutex<Core>,
-    db: &'a BotDb,
+    db: &'a UnQLite,
 }
 
 impl<'a> Fetcher<'a> {
-    pub fn init(core: Core, db: &'a BotDb) -> Fetcher<'a> {
+    pub fn init(core: Core, db: &'a UnQLite) -> Fetcher<'a> {
         let handle = &core.handle();
         let client = Client::configure()
             .connector(HttpsConnector::new(4, handle).unwrap())
@@ -40,8 +41,7 @@ impl<'a> Fetcher<'a> {
     }
 
     pub fn fetch(&self) {
-        // let urls: Vec<&str> = vec![SPELLS, ITEMS, BESTIARY];
-        let urls: Vec<&str> = vec![ITEMS, SPELLS, BESTIARY];
+        let urls: Vec<&str> = vec![SPELLS, ITEMS, BESTIARY];
         for url_part in urls {
             let uri = BASE_URL.to_string() + url_part + EXTENSION;
             let uri = uri.parse().unwrap();
@@ -51,12 +51,12 @@ impl<'a> Fetcher<'a> {
                     StatusCode::Ok => self.process_ok(res),
                     StatusCode::NotFound => self.process_not_found(url_part),
                     // TODO: somehow process error
-                    _ => panic!(),
+                    _ => panic!(res.status()),
                 }
             });
             let result = self.core.lock().unwrap().run(work).unwrap();
             match result {
-                Ok(value) => self.db.save(value),
+                Ok(value) => db::save(self.db, value),
                 Err(value) => {
                     if let Object(map) = serde_json::from_str(&value).unwrap() {
                         for file in map.values() {
@@ -68,11 +68,11 @@ impl<'a> Fetcher<'a> {
                                 match res.status() {
                                     StatusCode::Ok => self.process_ok(res),
                                     // TODO: somehow process error
-                                    _ => panic!(),
+                                    _ => panic!(res.status()),
                                 }
                             });
                             let value = self.core.lock().unwrap().run(work).unwrap().unwrap();
-                            self.db.save(value);
+                            db::save(self.db, value);
                         }
                     }
                 }

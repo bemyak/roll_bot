@@ -1,0 +1,9 @@
+// The search params are stored in $params objects
+print $params, "\n";
+
+// TODO: some search logic here
+
+$result = db_fetch('item');
+print $result;
+
+return $result;

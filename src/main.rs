@@ -7,20 +7,22 @@ extern crate log;
 extern crate serde_json;
 extern crate telegram_bot;
 extern crate tokio_core;
+extern crate unqlite;
 
-use db::BotDb;
+use unqlite::UnQLite;
 use fetcher::Fetcher;
 use std::env;
 use tokio_core::reactor::Core;
 
 mod db;
+mod util;
 mod fetcher;
 mod telegram;
 
 fn main() {
     let token = env::var("TELEGRAM_BOT_TOKEN").unwrap();
-    let db: BotDb = BotDb::init();
+    let db: UnQLite = db::init();
     let fetcher = Fetcher::init(Core::new().unwrap(), &db);
     fetcher.fetch();
-    telegram::start(&token, &mut Core::new().unwrap());
+    telegram::start(&token, &mut Core::new().unwrap(), &db);
 }
