@@ -1,31 +1,38 @@
-use serde_json;
-use unqlite::{
-    document::{Jx9, UnQLiteVm, Value}, UnQLite,
-};
-use util;
+use ejdb::Database;
+use futures::{future, sync::mpsc::Receiver, Stream};
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
+use tokio::runtime::TaskExecutor;
 
-const INSERT_SCRIPT: &str = include_str!("jx9/insert.jx9");
-const SEARCH_SCRIPT: &str = include_str!("jx9/search.jx9");
-
-pub fn init() -> UnQLite {
-    UnQLite::create_in_memory()
+pub struct Storage {
+    db: Arc<Mutex<Database>>,
+    is_saver_on: Arc<bool>,
 }
 
-pub fn save(db: &UnQLite, value: String) {
-    let mut insert = prepare_script(db, INSERT_SCRIPT);
-    insert.add_variable("entry", Value::string(value)).unwrap();
-    insert.exec_void().unwrap()
-}
+impl<'a> Storage {
+    pub fn init() -> Storage {
+        let db = Arc::new(Mutex::new(Database::open("db.ejdb").unwrap()));
 
-pub fn search(db: &UnQLite, value: &str) -> serde_json::Value {
-    let mut search = prepare_script(db, SEARCH_SCRIPT);
-    search.add_variable("params", Value::string(value)).unwrap();
-    let result = search.exec().unwrap().unwrap();
-    util::convert(&result)
-}
+        return Self {
+            db: db,
+            is_saver_on: Arc::new(false),
+        };
+    }
 
-fn prepare_script(db: &UnQLite, script: &str) -> UnQLiteVm {
-    let vm = db.compile(script).unwrap();
-    vm.output_to_stdout().unwrap();
-    vm
+    pub fn start_saver(&mut self, executor: &'a TaskExecutor, save_rx: Receiver<Value>) {
+        *Arc::get_mut(&mut self.is_saver_on).unwrap() = true;
+        let is_saver_on = self.is_saver_on.clone();
+        let future = save_rx
+            .take_while(move |_| future::ok(*is_saver_on))
+            .for_each(|_value| {
+                info!("Get some value!");
+                Ok(())
+            });
+        executor.spawn(future);
+    }
+
+    pub fn stop_saver(&mut self) {
+        warn!("Stopping saver!!!");
+        *Arc::get_mut(&mut self.is_saver_on).unwrap() = false;
+    }
 }
