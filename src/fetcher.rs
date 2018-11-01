@@ -13,27 +13,11 @@ const BESTIARY: &str = "/bestiary";
 const INDEX: &str = "/index.json";
 const EXTENSION: &str = ".json";
 
-pub struct Fetcher<'a> {
-    executor: &'a TaskExecutor,
-    tx: Sender<Value>,
-    client: Client<HttpsConnector<HttpConnector>>,
-}
-
-impl<'a> Fetcher<'a> {
-    pub fn init(executor: &'a TaskExecutor, tx: Sender<Value>) -> Self {
-        Self {
-            executor: executor,
-            tx: tx,
-            client: get_client(),
-        }
-    }
-
-    pub fn fetch(&self) {
-        vec![SPELLS, ITEMS, BESTIARY]
-            .iter()
-            .map(|url| get_work(self.tx.clone(), url))
-            .for_each(|work| self.executor.spawn(work))
-    }
+pub fn fetch(executor: &TaskExecutor, tx: Sender<Value>) {
+    vec![SPELLS, ITEMS, BESTIARY]
+        .iter()
+        .map(|url| get_work(tx.clone(), url))
+        .for_each(|work| executor.spawn(work))
 }
 
 fn get_work(tx: Sender<Value>, url: &'static str) -> impl Future<Item = (), Error = ()> {
@@ -83,7 +67,7 @@ fn process_response(
     debug!("Processing response...");
     match resp.status() {
         StatusCode::OK => process_ok(resp),
-        // StatusCode::NOT_FOUND => process_not_found(url),
+        StatusCode::NOT_FOUND => process_not_found(url),
         _ => get_status_code_error(resp.status()),
     }
 }
@@ -127,6 +111,7 @@ fn process_not_found(url: &str) -> Box<Future<Item = FetchResult, Error = FetchE
             }
         }).map(|parts| {
             let result: Vec<Value> = Vec::new();
+            // Here we need tx and executor again :(
             // parts.iter().map(|part| {
             //     let uri = BASE_URL.to_string() + url + part;
             //     debug!("Fetching: {}", uri);

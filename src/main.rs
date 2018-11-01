@@ -10,7 +10,6 @@ extern crate telegram_bot;
 extern crate tokio;
 extern crate tokio_core;
 
-use fetcher::Fetcher;
 use futures::sync::mpsc::{self, Receiver, Sender};
 use serde_json::Value;
 use std::env;
@@ -31,8 +30,7 @@ fn main() {
     let (tx, rx): (Sender<Value>, Receiver<Value>) = mpsc::channel(500000);
     let mut db = db::Storage::init();
     db.start_saver(&executor, rx);
-    let fetcher = Fetcher::init(&executor, tx);
-    fetcher.fetch();
+    fetcher::fetch(&executor, tx);
     rt.shutdown_on_idle().wait().unwrap();
     db.stop_saver();
     let token = env::var("TELEGRAM_BOT_TOKEN").unwrap();
