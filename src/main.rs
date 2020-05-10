@@ -1,38 +1,57 @@
+#![allow(dead_code)]
+extern crate ejdb;
+extern crate futures;
 #[macro_use]
 extern crate log;
-
-extern crate ejdb;
-extern crate env_logger;
-extern crate futures;
-extern crate hyper;
+extern crate reqwest;
 extern crate serde_json;
+extern crate simplelog;
 extern crate telegram_bot;
 extern crate tokio;
-extern crate tokio_core;
 
-use futures::sync::mpsc::{self, Receiver, Sender};
-use serde_json::Value;
-use std::env;
-use tokio::prelude::Future;
-use tokio::runtime::Runtime;
-use tokio_core::reactor::Core;
-
-#[allow(dead_code)]
 mod db;
-#[allow(dead_code)]
-mod fetcher;
-mod telegram;
+mod fetch;
+mod format;
+// mod telegram;
 
-fn main() {
-    env_logger::init();
-    let rt = Runtime::new().unwrap();
-    let executor = rt.executor();
-    let (tx, rx): (Sender<Value>, Receiver<Value>) = mpsc::channel(500000);
-    let mut db = db::Storage::init();
-    db.start_saver(&executor, rx);
-    fetcher::fetch(&executor, tx);
-    rt.shutdown_on_idle().wait().unwrap();
-    db.stop_saver();
-    let token = env::var("TELEGRAM_BOT_TOKEN").unwrap();
-    telegram::start(&token, &mut Core::new().unwrap());
+use std::env;
+use std::error::Error;
+
+use futures::StreamExt;
+use telegram_bot::*;
+
+use db::DndDatabase;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    simplelog::SimpleLogger::init(simplelog::LevelFilter::Info, simplelog::Config::default())?;
+
+    let token = env::var("TELEGRAM_BOT_TOKEN")?;
+
+    // let db = DndDatabase::new("./test_data/roll_bot.db")?;
+
+    let db = DndDatabase::new("./roll_bot.db")?;
+    fetch::fetch(db.clone()).await?;
+
+    let api = Api::new(token);
+    let mut stream = api.stream();
+    while let Some(update) = stream.next().await {
+        // If the received update contains a new message...
+        let update = update?;
+        if let UpdateKind::Message(message) = update.kind {
+            if let MessageKind::Text { ref data, .. } = message.kind {
+                // Print received text message to stdout.
+                trace!("Message received: {:?}", message);
+
+                // Answer message with "Hi".
+                api.send(message.text_reply(format!(
+                    "Hi, {}! You just wrote '{}'",
+                    &message.from.first_name, data
+                )))
+                .await?;
+            }
+        }
+    }
+
+    Ok(())
 }

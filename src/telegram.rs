@@ -1,8 +1,5 @@
-// use unqlite::UnQLite;
-// use db;
-use futures::Stream;
+use futures::StreamExt;
 use telegram_bot::*;
-use tokio_core::reactor::{Core, Handle};
 
 pub fn start(token: &str, core: &mut Core) {
     let handle = &core.handle();

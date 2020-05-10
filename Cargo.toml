@@ -1,7 +1,8 @@
 [package]
 name = "roll_bot"
 version = "0.1.0"
-authors = ["Sergej Gureev <bemyak@gmail.com>"]
+authors = ["Sergei Gureev <bemyak@gmail.com>"]
+edition = "2018"
 
 [profile.release]
 lto = true
@@ -9,16 +10,10 @@ panic = 'abort'
 
 [dependencies]
 log = "0.4"
-env_logger = "0.5"
-futures = "0.1"
-tokio-core = "0.1"
-tokio = "0.1"
-hyper-tls = "0.3"
+simplelog = { version = "0.7", features = ["test"] }
+futures = "0.3"
+tokio = { version = "0.2", features = ["rt-threaded", "macros"] }
 serde_json = "1.0"
-ejdb = { path = "../ejdb.rs" }
-telegram-bot = { path = "../telegram-bot/lib" }
-
-
-[dependencies.hyper]
-version = "0.12"
-default-features = false
+telegram-bot = "0.7"
+ejdb = "0.4"
+reqwest = { version = "0.10", features = ["json"] }

@@ -1,113 +1,129 @@
-use ejdb::bson::{Bson, Document};
+use std::clone::Clone;
+use std::error::Error;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use ejdb::bson;
+use ejdb::query::{Q, QH};
 use ejdb::Database;
-use futures::{future, sync::mpsc::Receiver, Stream};
-use serde_json::Value;
-use std::sync::{Arc, Mutex};
-use tokio::runtime::TaskExecutor;
+use ejdb::Result as EjdbResult;
+use serde_json::Value as JsonValue;
 
-pub struct Storage {
-    db: Arc<Mutex<Database>>,
-    is_saver_on: Arc<bool>,
+pub struct DndDatabase(Arc<Mutex<Database>>);
+
+impl Clone for DndDatabase {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
 }
 
-impl<'a> Storage {
-    pub fn init() -> Storage {
-        let db = Arc::new(Mutex::new(Database::open("db.ejdb").unwrap()));
-
-        return Self {
-            db: db,
-            is_saver_on: Arc::new(false),
-        };
+impl DndDatabase {
+    pub fn new(path: &str) -> Result<DndDatabase, Box<dyn Error>> {
+        let ejdb = Database::open(path)?;
+        Ok(DndDatabase(Arc::new(Mutex::new(ejdb))))
     }
 
-    pub fn start_saver(&mut self, executor: &'a TaskExecutor, save_rx: Receiver<Value>) {
-        *Arc::get_mut(&mut self.is_saver_on).unwrap() = true;
-        let is_saver_on = self.is_saver_on.clone();
-        let db = self.db.clone();
-        let future = save_rx
-            .take_while(move |_| future::ok(*is_saver_on))
-            .for_each(move |value| {
-                let thread_db = db.lock().unwrap();
-                let doc = convert_value_to_document(&value);
-                doc.iter().for_each(move |(key, value)| {
-                    if let Bson::Document(doc) = value {
-                        thread_db
-                            .collection(key.clone().as_str())
-                            .unwrap()
-                            .save(doc)
-                            .unwrap();
-                    } else {
-                        panic!("afasdf")
-                    }
-                });
-                // db.collection()
-                // info!("Get some value!");
-                Ok(())
+    pub fn save_collection(&self, json: JsonValue, collection: &str) -> Result<(), Box<dyn Error>> {
+        let bs: bson::Bson = json.into();
+        let doc = bs.as_document().ok_or(bson::DecoderError::Unknown(
+            format!("Not a document, but a {:?}", bs.element_type()).to_owned(),
+        ))?;
+        let f = doc.get(collection).ok_or(bson::DecoderError::Unknown(
+            format!("Does not have {} field", collection).to_owned(),
+        ))?;
+        let arr = f.as_array().ok_or(bson::DecoderError::Unknown(
+            format!("{} field is not an array", collection).to_owned(),
+        ))?;
+        let db = self.0.try_lock().unwrap();
+        let coll = db.collection(collection)?;
+        coll.index("name").number().string(false).set()?;
+        arr.into_iter()
+            .filter_map(|elem| elem.as_document())
+            .for_each(|elem| {
+                let res = coll.save(elem);
+                if let Err(e) = res {
+                    error!("Failed to save document: {}", e)
+                }
             });
-        executor.spawn(future);
+        Ok(())
     }
 
-    pub fn stop_saver(&mut self) {
-        warn!("Stopping saver!!!");
-        *Arc::get_mut(&mut self.is_saver_on).unwrap() = false;
+    pub fn get_stats(&self) -> String {
+        let db = self.0.try_lock().unwrap();
+        db.get_metadata()
+            .unwrap()
+            .collections()
+            .map(|col| format!("{}: {} records", col.name(), col.records()))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
-}
 
-pub fn convert_value_to_document(value: &Value) -> Document {
-    match value {
-        Value::Object(map) => {
-            let mut result = Document::new();
-            map.iter().for_each(|(key, value)| {
-                result
-                    .insert(key.clone(), convert_value_to_bson(value))
-                    .unwrap();
-            });
-            result
-        }
-        _ => panic!("bad json!"),
+    pub fn list_collection(&self, collection: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        let db = self.0.try_lock().unwrap();
+        let coll = db.collection(collection)?;
+        let res = coll
+            .query(Q.empty(), QH.field("name").include())
+            .find()
+            .unwrap()
+            .collect::<EjdbResult<Vec<bson::Document>>>()?;
+        Ok(res
+            .iter()
+            .filter_map(|doc| doc.get("name"))
+            .filter_map(|doc| doc.as_str())
+            .map(|doc| doc.to_owned())
+            .collect::<Vec<String>>())
     }
-}
 
-pub fn convert_value_to_bson(value: &Value) -> Bson {
-    match value {
-        Value::Object(map) => {
-            let mut result = Document::new();
-            map.iter().for_each(|(key, value)| {
-                result
-                    .insert(key.clone(), convert_value_to_bson(value))
-                    .unwrap();
-            });
-            Bson::Document(result)
-        }
-
-        Value::Bool(boool) => Bson::Boolean(boool.clone()),
-        Value::Number(n) => {
-            if n.is_i64() {
-                return Bson::I64(n.as_i64().unwrap().clone());
-            } else if n.is_f64() {
-                return Bson::FloatingPoint(n.as_f64().unwrap().clone());
-            } else {
-                return Bson::FloatingPoint(n.as_f64().unwrap().clone());
-            }
-        }
-        Value::String(string) => Bson::String(string.clone()),
-        Value::Array(array) => {
-            Bson::Array(array.iter().map(|val| convert_value_to_bson(val)).collect())
-        }
-        Value::Null => Bson::Null,
+    pub fn get_item(
+        &self,
+        collection: &str,
+        item_name: &str,
+    ) -> Result<bson::Document, Box<dyn Error>> {
+        let db = self.0.try_lock().unwrap();
+        let coll = db.collection(collection)?;
+        coll.query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
+            .find_one()?
+            .ok_or(Box::new(bson::DecoderError::Unknown(
+                "Not found".to_owned(),
+            )))
     }
 }
 
-// pub fn convert(bson: &Document) -> Value {
-//     let result = Map::new();
-//     for (key, value) in bson.iter() {
-//         result.insert(key.to_string(), convert_bson(value));
-//     }
-//     return Value::Object(result);
-// }
+#[cfg(test)]
+mod test {
+    use super::DndDatabase;
+    use crate::format::format_document;
 
-// fn convert_bson(bson: &Bson) -> Value {
-//     match bson {
-//         Bson::FloatingPoint(f) => Value::Number(Number::from_f64(f.clone()).unwrap()),
-//     }
-// }
+    use simplelog::*;
+
+    fn init() {
+        let _ = TestLogger::init(LevelFilter::Trace, Config::default());
+    }
+
+    #[test]
+    fn test_list_collection() {
+        init();
+        let db = DndDatabase::new(get_db_path()).unwrap();
+        info!("{:?}", db.list_collection("item").unwrap());
+    }
+
+    #[test]
+    fn test_get_stats() {
+        init();
+        let db = DndDatabase::new(get_db_path()).unwrap();
+        info!("{}", db.get_stats());
+    }
+
+    #[test]
+    fn test_get_item() {
+        init();
+        let db = DndDatabase::new(get_db_path()).unwrap();
+        let i = db.get_item("spell", "Fireball").unwrap();
+        info!("{:#?}", i);
+        info!("{}", format_document(i));
+    }
+
+    fn get_db_path() -> &'static str {
+        "./test_data/roll_bot.db"
+    }
+}
