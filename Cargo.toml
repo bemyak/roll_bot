@@ -17,3 +17,4 @@ serde_json = "1.0"
 telegram-bot = "0.7"
 ejdb = "0.4"
 reqwest = { version = "0.10", features = ["json"] }
+rand = "0.7"

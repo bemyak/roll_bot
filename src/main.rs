@@ -3,6 +3,7 @@ extern crate ejdb;
 extern crate futures;
 #[macro_use]
 extern crate log;
+extern crate rand;
 extern crate reqwest;
 extern crate serde_json;
 extern crate simplelog;
@@ -12,46 +13,28 @@ extern crate tokio;
 mod db;
 mod fetch;
 mod format;
-// mod telegram;
+mod telegram;
 
-use std::env;
 use std::error::Error;
-
-use futures::StreamExt;
-use telegram_bot::*;
 
 use db::DndDatabase;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    simplelog::SimpleLogger::init(simplelog::LevelFilter::Info, simplelog::Config::default())?;
+    let log_config = simplelog::ConfigBuilder::new()
+        .add_filter_allow_str("roll_bot")
+        .build();
+    simplelog::SimpleLogger::init(simplelog::LevelFilter::Trace, log_config)?;
 
-    let token = env::var("TELEGRAM_BOT_TOKEN")?;
+    // Use this while testing to avoid unnecessary loading 5e.tools
+    let db = DndDatabase::new("./test_data/roll_bot.db")?;
 
-    // let db = DndDatabase::new("./test_data/roll_bot.db")?;
+    // Uncomment this when ready for production use
+    // let db = DndDatabase::new("./roll_bot.db")?;
+    // fetch::fetch(db.clone()).await?;
 
-    let db = DndDatabase::new("./roll_bot.db")?;
-    fetch::fetch(db.clone()).await?;
-
-    let api = Api::new(token);
-    let mut stream = api.stream();
-    while let Some(update) = stream.next().await {
-        // If the received update contains a new message...
-        let update = update?;
-        if let UpdateKind::Message(message) = update.kind {
-            if let MessageKind::Text { ref data, .. } = message.kind {
-                // Print received text message to stdout.
-                trace!("Message received: {:?}", message);
-
-                // Answer message with "Hi".
-                api.send(message.text_reply(format!(
-                    "Hi, {}! You just wrote '{}'",
-                    &message.from.first_name, data
-                )))
-                .await?;
-            }
-        }
-    }
+    let bot = telegram::Bot::new(db)?;
+    bot.start().await?;
 
     Ok(())
 }
