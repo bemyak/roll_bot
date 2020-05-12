@@ -4,6 +4,7 @@ extern crate futures;
 #[macro_use]
 extern crate log;
 extern crate rand;
+extern crate regex;
 extern crate reqwest;
 extern crate serde_json;
 extern crate simplelog;

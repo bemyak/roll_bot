@@ -3,6 +3,7 @@ use std::error::Error;
 
 use futures::StreamExt;
 use rand::prelude::*;
+use regex::Regex;
 use telegram_bot::prelude::*;
 use telegram_bot::{Api, Message, MessageEntityKind, MessageKind, ParseMode, UpdateKind};
 
@@ -13,6 +14,7 @@ const PROJECT_URL: &'static str = "https://gitlab.com/bemyak/roll_bot";
 pub struct Bot {
     db: DndDatabase,
     api: Api,
+    dice_regex: Regex,
 }
 
 impl Bot {
@@ -25,6 +27,7 @@ impl Bot {
         Ok(Self {
             db,
             api: Api::new(token),
+            dice_regex: Regex::new(r"(?P<num>\d+)?(d|к|д)(?P<face>\d+)").unwrap(),
         })
     }
 
