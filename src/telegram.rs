@@ -142,9 +142,10 @@ I can help you with your Dungeons&Dragons game (5th edition). I can:
 
 /item - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
 
-My code is open like your brain for the mind flayer!
+My code is open like your brain to a Mind Flayer!
 You can get it [here]({}) (code, not brain)
 Suggestions and contributions are welcome.", PROJECT_URL);
+
         self.api
             .send(
                 message
