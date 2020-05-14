@@ -1,4 +1,5 @@
 use std::clone::Clone;
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -58,8 +59,27 @@ impl DndDatabase {
             .join("\n")
     }
 
-    pub fn list_collection(&self, collection: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    pub fn get_cache(&self) -> HashMap<String, Vec<String>> {
         let db = self.0.try_lock().unwrap();
+        let collections = DndDatabase::list_collections(&*db);
+        let mut result = HashMap::with_capacity(collections.len());
+        collections.into_iter().for_each(|collection| {
+            let items = DndDatabase::list_items(&*db, &collection).unwrap_or_default();
+            result.insert(collection, items);
+        });
+        result
+    }
+
+    fn list_collections(db: &Database) -> Vec<String> {
+        db.get_metadata()
+            .unwrap()
+            .collections()
+            .map(|coll| coll.name().to_owned())
+            .filter(|coll| !coll.starts_with("_"))
+            .collect::<Vec<_>>()
+    }
+
+    fn list_items(db: &Database, collection: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let coll = db.collection(collection)?;
         let res = coll
             .query(Q.empty(), QH.field("name").include())
@@ -101,10 +121,12 @@ mod test {
     }
 
     #[test]
-    fn test_list_collection() {
+    fn test_get_cache() {
         init();
         let db = DndDatabase::new(get_db_path()).unwrap();
-        info!("{:?}", db.list_collection("item").unwrap());
+        let cache = db.get_cache();
+        info!("{:?}", cache);
+        assert!(cache.len() > 0);
     }
 
     #[test]

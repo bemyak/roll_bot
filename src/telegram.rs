@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
+use std::time::Instant;
 
 use futures::StreamExt;
 use rand::prelude::*;
@@ -15,6 +17,8 @@ pub struct Bot {
     db: DndDatabase,
     api: Api,
     dice_regex: Regex,
+    cache: HashMap<String, Vec<String>>,
+    cache_timestamp: Instant,
 }
 
 impl Bot {
@@ -24,10 +28,14 @@ impl Bot {
             std::process::exit(1)
         });
 
+        let cache = db.get_cache();
+
         Ok(Self {
             db,
             api: Api::new(token),
             dice_regex: Regex::new(r"(?P<num>\d+)?(d|к|д)(?P<face>\d+)").unwrap(),
+            cache,
+            cache_timestamp: Instant::now(),
         })
     }
 

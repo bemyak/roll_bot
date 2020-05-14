@@ -11,3 +11,6 @@ Implemented features:
 
 ## Before launch
 The only thing needed to get the bot running is to set `ROLL_BOT_TOKEN` environment variable. You can obtain this token from the [BotFather](https://t.me/BotFather)
+
+## Is it even legal?
+This projects doesn't host any data, everything is fetched from https://5e.tools public API, so all legal questions should be addressed there.
