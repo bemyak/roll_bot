@@ -28,14 +28,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
     simplelog::SimpleLogger::init(simplelog::LevelFilter::Trace, log_config)?;
 
     // Use this while testing to avoid unnecessary loading 5e.tools
-    let db = DndDatabase::new("./test_data/roll_bot.db")?;
+    let db = DndDatabase::new("/tmp/roll_bot.db")?;
 
     // Uncomment this when ready for production use
     // let db = DndDatabase::new("./roll_bot.db")?;
-    // fetch::fetch(db.clone()).await?;
+    fetch(db.clone()).await;
+    info!("{}", db.get_stats());
+    fetch(db.clone()).await;
+    info!("{}", db.get_stats());
 
-    let bot = telegram::Bot::new(db)?;
-    bot.start().await?;
+    // let bot = telegram::Bot::new(db)?;
+    // bot.start().await?;
 
     Ok(())
+}
+
+async fn fetch(db: DndDatabase) {
+    let result = fetch::fetch().await;
+    match result {
+        Ok(data) => {
+            for (collection, items) in data {
+                db.save_collection(items, collection).unwrap_or_else(|err| {
+                    error!("Error occurred while saving data to DB: {}", err)
+                });
+            }
+        }
+        Err(err) => error!("Error occurred while fetching data: {}", err),
+    }
 }

@@ -24,18 +24,17 @@ impl DndDatabase {
         Ok(DndDatabase(Arc::new(Mutex::new(ejdb))))
     }
 
-    pub fn save_collection(&self, json: JsonValue, collection: &str) -> Result<(), Box<dyn Error>> {
-        let bs: bson::Bson = json.into();
-        let doc = bs.as_document().ok_or(bson::DecoderError::Unknown(
-            format!("Not a document, but a {:?}", bs.element_type()).to_owned(),
-        ))?;
-        let f = doc.get(collection).ok_or(bson::DecoderError::Unknown(
-            format!("Does not have {} field", collection).to_owned(),
-        ))?;
-        let arr = f.as_array().ok_or(bson::DecoderError::Unknown(
+    pub fn save_collection(
+        &self,
+        json: Vec<JsonValue>,
+        collection: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let bs: bson::Bson = serde_json::Value::Array(json).into();
+        let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(
             format!("{} field is not an array", collection).to_owned(),
         ))?;
         let db = self.0.try_lock().unwrap();
+        db.drop_collection(collection, false)?;
         let coll = db.collection(collection)?;
         coll.index("name").number().string(false).set()?;
         arr.into_iter()

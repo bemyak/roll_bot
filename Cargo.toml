@@ -1,7 +1,7 @@
 [package]
 name = "roll_bot"
 version = "0.1.0"
-authors = ["Sergei Gureev <bemyak@gmail.com>"]
+authors = ["Sergei Gureev <bemyak@pm.me>"]
 edition = "2018"
 
 [profile.release]
