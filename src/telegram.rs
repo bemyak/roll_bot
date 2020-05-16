@@ -77,6 +77,7 @@ impl Bot {
                                 // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
                                 "/help" => self.help(message.clone(), arg).await,
                                 "/roll" => self.roll(message.clone(), arg).await,
+                                "/stats" => self.stats(message.clone()).await,
                                 _ => self.unknown(message.clone(), cmd).await,
                             };
 
@@ -172,6 +173,34 @@ Suggestions and contributions are welcome.", PROJECT_URL);
                 message
                     .chat
                     .text(format!("{}", rand::thread_rng().gen_range(0, 20) + 1)),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn stats(&self, message: Message) -> Result<(), Box<dyn Error>> {
+        let last_update = Instant::now()
+            .checked_duration_since(self.db.get_timestamp())
+            .unwrap()
+            .as_secs();
+
+        let update_str = match last_update {
+            0..=60 => format!("{}s", last_update),
+            61..=3600 => format!("{}m", last_update / 60),
+            3601..=86400 => format!("{}h", last_update / 60 / 60),
+            86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
+        };
+
+        self.api
+            .send(
+                message
+                    .chat
+                    .text(format!(
+                        "{}\nLast update `{}` ago",
+                        self.db.get_stats(),
+                        update_str
+                    ))
+                    .parse_mode(ParseMode::Markdown),
             )
             .await?;
         Ok(())

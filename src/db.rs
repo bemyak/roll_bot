@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Instant;
 
 use ejdb::bson;
 use ejdb::query::{Q, QH};
@@ -10,7 +11,12 @@ use ejdb::Database;
 use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
 
-pub struct DndDatabase(Arc<Mutex<Database>>);
+pub struct DndDatabase(Arc<Mutex<Inner>>);
+
+struct Inner {
+    db: Database,
+    timestamp: Instant,
+}
 
 impl Clone for DndDatabase {
     fn clone(&self) -> Self {
@@ -21,11 +27,14 @@ impl Clone for DndDatabase {
 impl DndDatabase {
     pub fn new(path: &str) -> Result<DndDatabase, Box<dyn Error>> {
         let ejdb = Database::open(path)?;
-        Ok(DndDatabase(Arc::new(Mutex::new(ejdb))))
+        Ok(DndDatabase(Arc::new(Mutex::new(Inner {
+            db: ejdb,
+            timestamp: Instant::now(),
+        }))))
     }
 
     pub fn save_collection(
-        &self,
+        &mut self,
         json: Vec<JsonValue>,
         collection: &str,
     ) -> Result<(), Box<dyn Error>> {
@@ -33,9 +42,10 @@ impl DndDatabase {
         let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(
             format!("{} field is not an array", collection).to_owned(),
         ))?;
-        let db = self.0.try_lock().unwrap();
-        db.drop_collection(collection, false)?;
-        let coll = db.collection(collection)?;
+        let mut inner = self.0.try_lock().unwrap();
+        inner.timestamp = Instant::now();
+        inner.db.drop_collection(collection, false)?;
+        let coll = inner.db.collection(collection)?;
         coll.index("name").number().string(false).set()?;
         arr.into_iter()
             .filter_map(|elem| elem.as_document())
@@ -48,9 +58,16 @@ impl DndDatabase {
         Ok(())
     }
 
+    pub fn get_timestamp(&self) -> Instant {
+        let inner = self.0.try_lock().unwrap();
+        inner.timestamp
+    }
+
     pub fn get_stats(&self) -> String {
-        let db = self.0.try_lock().unwrap();
-        db.get_metadata()
+        let inner = self.0.try_lock().unwrap();
+        inner
+            .db
+            .get_metadata()
             .unwrap()
             .collections()
             .map(|col| format!("{}: {} records", col.name(), col.records()))
@@ -59,11 +76,11 @@ impl DndDatabase {
     }
 
     pub fn get_cache(&self) -> HashMap<String, Vec<String>> {
-        let db = self.0.try_lock().unwrap();
-        let collections = DndDatabase::list_collections(&*db);
+        let inner = self.0.try_lock().unwrap();
+        let collections = DndDatabase::list_collections(&inner.db);
         let mut result = HashMap::with_capacity(collections.len());
         collections.into_iter().for_each(|collection| {
-            let items = DndDatabase::list_items(&*db, &collection).unwrap_or_default();
+            let items = DndDatabase::list_items(&inner.db, &collection).unwrap_or_default();
             result.insert(collection, items);
         });
         result
@@ -98,8 +115,8 @@ impl DndDatabase {
         collection: &str,
         item_name: &str,
     ) -> Result<bson::Document, Box<dyn Error>> {
-        let db = self.0.try_lock().unwrap();
-        let coll = db.collection(collection)?;
+        let inner = self.0.try_lock().unwrap();
+        let coll = inner.db.collection(collection)?;
         coll.query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
             .find_one()?
             .ok_or(Box::new(bson::DecoderError::Unknown(

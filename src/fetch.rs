@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
-use std::future::Future;
-use std::pin::Pin;
 
-use futures::future::join_all;
+use futures::future::{join_all, BoxFuture, FutureExt};
 use reqwest;
 use serde_json::Value as JsonValue;
 
@@ -29,7 +27,8 @@ impl Display for FetchError {
 
 impl Error for FetchError {}
 
-pub async fn fetch() -> Result<HashMap<&'static str, Vec<JsonValue>>, Box<dyn Error>> {
+pub async fn fetch() -> Result<HashMap<&'static str, Vec<JsonValue>>, Box<dyn Error + Send + Sync>>
+{
     let mut result = HashMap::new();
 
     for (collection, url) in vec![
@@ -37,68 +36,70 @@ pub async fn fetch() -> Result<HashMap<&'static str, Vec<JsonValue>>, Box<dyn Er
         ("monster", BASE_URL.to_owned() + BESTIARY),
         ("spell", BASE_URL.to_owned() + SPELLS),
     ] {
-        let items = download(url, collection).await?;
-        result.insert(collection, items);
+        result.insert(collection, download(collection, url).await?);
     }
+
+    info!("Fetch complete!");
 
     Ok(result)
 }
 
-fn download(
-    url: String,
+async fn download(
     collection: &'static str,
-) -> Pin<Box<dyn Future<Output = Result<Vec<JsonValue>, Box<dyn Error>>>>> {
-    Box::pin(async move {
-        let file_url = url.clone() + EXTENSION;
+    url: String,
+) -> Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>> {
+    let file_url = url.clone() + EXTENSION;
 
-        let response = reqwest::get(&file_url).await?;
+    let response = reqwest::get(&file_url).await?;
 
-        match response.status() {
-            reqwest::StatusCode::OK => {
-                info!("Successfully get url: {}", file_url);
-                let text = response.text().await?;
-                let json: JsonValue = serde_json::from_str(&text)?;
-                if let JsonValue::Object(obj) = json {
-                    let items = obj.get(collection).ok_or(FetchError {
-                        url: file_url,
-                        desc: format!("Response object doesn't have field {}", collection),
-                    })?;
-                    if let JsonValue::Array(arr) = items {
-                        return Ok(arr.to_vec());
-                    }
+    match response.status() {
+        reqwest::StatusCode::OK => {
+            info!("Successfully get url: {}", file_url);
+            let text = response.text().await?;
+            let json: JsonValue = serde_json::from_str(&text)?;
+            if let JsonValue::Object(obj) = json {
+                let items = obj.get(collection).ok_or(FetchError {
+                    url: file_url,
+                    desc: format!("Response object doesn't have field {}", collection),
+                })?;
+                if let JsonValue::Array(arr) = items {
+                    return Ok(arr.to_vec());
                 }
-                Ok(Vec::new())
             }
-            reqwest::StatusCode::NOT_FOUND => download_indexed(url, collection).await,
-            _ => Err::<_, Box<dyn Error>>(Box::new(FetchError {
-                url: file_url,
-                desc: format!("Unexpected status code: {}", response.status()),
-            })),
+            Ok(Vec::new())
         }
-    })
+        reqwest::StatusCode::NOT_FOUND => download_indexed(collection, url).await,
+        _ => Err::<_, Box<dyn Error + Send + Sync>>(Box::new(FetchError {
+            url: file_url,
+            desc: format!("Unexpected status code: {}", response.status()),
+        })),
+    }
 }
 
-async fn download_indexed(
-    url: String,
+fn download_indexed(
     collection: &'static str,
-) -> Result<Vec<JsonValue>, Box<dyn Error>> {
-    info!(
-        "File not found: {}, trying to treat it as a directory...",
-        url
-    );
-    let index_url = url.clone() + INDEX;
-    let index: HashMap<String, String> = reqwest::get(&index_url)
-        .await?
-        .json::<HashMap<String, String>>()
-        .await?;
-    let children = join_all(
-        index
-            .values()
-            .map(|file| download(url.clone() + "/" + remove_extension(file), collection))
-            .collect::<Vec<_>>(),
-    )
-    .await;
-    Ok(children.into_iter().flatten().flatten().collect::<Vec<_>>())
+    url: String,
+) -> BoxFuture<'static, Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>>> {
+    async move {
+        info!(
+            "File not found: {}, trying to treat it as a directory...",
+            url
+        );
+        let index_url = url.clone() + INDEX;
+        let index: HashMap<String, String> = reqwest::get(&index_url)
+            .await?
+            .json::<HashMap<String, String>>()
+            .await?;
+        let children = join_all(
+            index
+                .values()
+                .map(|file| download(collection, url.clone() + "/" + remove_extension(file)))
+                .collect::<Vec<_>>(),
+        )
+        .await;
+        Ok(children.into_iter().flatten().flatten().collect::<Vec<_>>())
+    }
+    .boxed()
 }
 
 fn remove_extension(s: &str) -> &str {
