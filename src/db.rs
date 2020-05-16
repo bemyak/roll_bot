@@ -46,7 +46,7 @@ impl DndDatabase {
         inner.timestamp = Instant::now();
         inner.db.drop_collection(collection, false)?;
         let coll = inner.db.collection(collection)?;
-        coll.index("name").number().string(false).set()?;
+        coll.index("name").string(false).set()?;
         arr.into_iter()
             .filter_map(|elem| elem.as_document())
             .for_each(|elem| {
