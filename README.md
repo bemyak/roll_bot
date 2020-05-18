@@ -19,7 +19,7 @@ Since Telegram might be blocked in some countries, it makes sense to use Tor Net
 2. Add line `HTTPTunnelPort 9080` somewhere in `/etc/tor/torrc` config file
 3. Start `tor` service:  
    `systemctl start tor`  
-   You now have two ports open: `9050` SOCKS5 proxy and `9080` -- HTTP.
+   You now have two ports open: `9050` as SOCKS5 proxy and `9080` as HTTP. Unfortunately, we don't support SOCKS5 proxy at the moment.
 4. Set `roll_bot_http_proxy` environment variable:  
    `export roll_bot_http_proxy=http://localhost:9080` or `set -x roll_bot_http_proxy http://localhost:9080` if you're using fish shell.
 

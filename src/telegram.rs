@@ -81,13 +81,16 @@ impl Bot {
                                 .map_or(data.len(), |next_entity| next_entity.offset as usize);
                             let arg = &data[arg_start..arg_end].trim();
 
-                            let cmd_result: Result<(), Box<dyn Error>> = match cmd {
+                            let cmd_result = match cmd {
                                 // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
+                                // The returned string value is used to log request-response pair into the database
                                 "/help" => self.help(message.clone(), arg).await,
                                 "/roll" => self.roll(message.clone(), arg).await,
                                 "/stats" => self.stats(message.clone()).await,
                                 _ => self.unknown(message.clone(), cmd).await,
                             };
+
+                            self.db.log_message(&message, &cmd_result);
 
                             if let Err(err) = cmd_result {
                                 error!("Error while processing message {}: {}", data, err);
@@ -116,7 +119,7 @@ impl Bot {
         cmd: String,
         data: String,
         err: Box<dyn Error>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<Option<String>, Box<dyn Error>> {
         let url = format!("{}/-/issues/new?issue[title]=Error while processing command {}&issue[description]={}\n{}", PROJECT_URL, cmd, data, err);
         let msg = format!(
             "Ooops! An error occurred :(\nPlease, [submit a bug report]({})",
@@ -132,10 +135,10 @@ impl Bot {
                     .disable_preview(),
             )
             .await?;
-        Ok(())
+        Ok(None)
     }
 
-    async fn unknown(&self, message: Message, cmd: &str) -> Result<(), Box<dyn Error>> {
+    async fn unknown(&self, message: Message, cmd: &str) -> Result<Option<String>, Box<dyn Error>> {
         self.api
             .send(
                 message
@@ -144,10 +147,10 @@ impl Bot {
                     .parse_mode(ParseMode::Markdown),
             )
             .await?;
-        Ok(())
+        Ok(None)
     }
 
-    async fn help(&self, message: Message, _arg: &str) -> Result<(), Box<dyn Error>> {
+    async fn help(&self, message: Message, _arg: &str) -> Result<Option<String>, Box<dyn Error>> {
         let help = format!("Hi! I'm a bot. The Dungeon Bot!
 I can help you with your Dungeons&Dragons game (5th edition). I can:
 
@@ -172,23 +175,19 @@ Suggestions and contributions are welcome.", PROJECT_URL);
                     .disable_preview(),
             )
             .await?;
-        Ok(())
+        Ok(None)
     }
 
-    async fn roll(&self, message: Message, _arg: &str) -> Result<(), Box<dyn Error>> {
-        self.api
-            .send(
-                message
-                    .chat
-                    .text(format!("{}", rand::thread_rng().gen_range(0, 20) + 1)),
-            )
-            .await?;
-        Ok(())
+    async fn roll(&self, message: Message, _arg: &str) -> Result<Option<String>, Box<dyn Error>> {
+        let msg = format!("{}", rand::thread_rng().gen_range(0, 20) + 1);
+
+        self.api.send(message.chat.text(msg.clone())).await?;
+        Ok(Some(msg))
     }
 
-    async fn stats(&self, message: Message) -> Result<(), Box<dyn Error>> {
+    async fn stats(&self, message: Message) -> Result<Option<String>, Box<dyn Error>> {
         let last_update = Instant::now()
-            .checked_duration_since(self.db.get_timestamp())
+            .checked_duration_since(self.db.get_update_timestamp())
             .unwrap()
             .as_secs();
 
@@ -199,19 +198,24 @@ Suggestions and contributions are welcome.", PROJECT_URL);
             86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
         };
 
+        let msg = format!(
+            "*Table stats*\n{}\n\n*Usage stats*\n{}\n\nLast database update `{}` ago",
+            self.db.get_collection_stats()?,
+            self.db.get_message_stats()?,
+            update_str,
+        );
+
+        info!("{}", msg);
+
         self.api
             .send(
                 message
                     .chat
-                    .text(format!(
-                        "{}\nLast update `{}` ago",
-                        self.db.get_stats(),
-                        update_str
-                    ))
+                    .text(msg.clone())
                     .parse_mode(ParseMode::Markdown),
             )
             .await?;
-        Ok(())
+        Ok(Some(msg))
     }
 }
 

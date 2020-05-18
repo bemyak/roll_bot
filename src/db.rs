@@ -1,15 +1,22 @@
 use std::clone::Clone;
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use ejdb::bson;
+use ejdb::bson::Bson;
 use ejdb::query::{Q, QH};
 use ejdb::Database;
 use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
+use telegram_bot::{Message, MessageChat, MessageText};
+
+// System table should start with "_", so they will not be treated like D&D data collections
+const LOG_COLLECTION_NAME: &'static str = "_log";
 
 pub struct DndDatabase(Arc<Mutex<Inner>>);
 
@@ -27,6 +34,13 @@ impl Clone for DndDatabase {
 impl DndDatabase {
     pub fn new(path: &str) -> Result<DndDatabase, Box<dyn Error>> {
         let ejdb = Database::open(path)?;
+        // Create log index
+        {
+            let coll = ejdb.collection(LOG_COLLECTION_NAME)?;
+            coll.index("timestamp").number().set()?;
+            coll.index("user_id").number().set()?;
+        }
+
         Ok(DndDatabase(Arc::new(Mutex::new(Inner {
             db: ejdb,
             timestamp: Instant::now(),
@@ -38,7 +52,7 @@ impl DndDatabase {
         json: Vec<JsonValue>,
         collection: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let bs: bson::Bson = serde_json::Value::Array(json).into();
+        let bs: Bson = serde_json::Value::Array(json).into();
         let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(
             format!("{} field is not an array", collection).to_owned(),
         ))?;
@@ -58,21 +72,74 @@ impl DndDatabase {
         Ok(())
     }
 
-    pub fn get_timestamp(&self) -> Instant {
+    pub fn get_update_timestamp(&self) -> Instant {
         let inner = self.0.try_lock().unwrap();
         inner.timestamp
     }
 
-    pub fn get_stats(&self) -> String {
+    pub fn get_collection_stats(&self) -> Result<String, Box<dyn Error>> {
         let inner = self.0.try_lock().unwrap();
-        inner
+        Ok(inner
             .db
-            .get_metadata()
-            .unwrap()
+            .get_metadata()?
             .collections()
-            .map(|col| format!("{}: {} records", col.name(), col.records()))
+            .map(|col| format!("`{}`: `{}` records", col.name(), col.records()))
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n"))
+    }
+
+    // This is terribly inefficient, but upstream EJDB bindings does not implement distinct queries :(
+    pub fn get_message_stats(&self) -> Result<String, Box<dyn Error>> {
+        let msgs = self.get_all_massages()?;
+        let now = get_unix_time();
+        let mount_ago = now - 60 * 60 * 24 * 30;
+
+        let msg_total = msgs.len();
+        let msg_total_month = msgs.iter().filter(|msg| msg.timestamp >= mount_ago).count();
+
+        let users: HashMap<i64, u64> = {
+            let mut users = HashMap::new();
+
+            msgs.iter().for_each(|msg| {
+                let old_ts = users.get(&msg.user_id);
+                match old_ts {
+                    None => {
+                        users.insert(msg.user_id, msg.timestamp);
+                    }
+                    Some(old_ts) => {
+                        if old_ts < &msg.timestamp {
+                            users.insert(msg.user_id, msg.timestamp);
+                        }
+                    }
+                }
+            });
+            users
+        };
+
+        let users_total = users.iter().count();
+        let users_total_month = users.iter().filter(|(_, ts)| ts >= &&mount_ago).count();
+
+        Ok(
+            format!(
+                "Total messages: `{}`\nMessages since last month: `{}`\nUnique users: `{}`\nUnique users since last month: `{}`",
+                msg_total,
+                msg_total_month,
+                users_total,
+                users_total_month
+            )
+        )
+    }
+
+    fn get_all_massages(&self) -> Result<Vec<LogMessage>, Box<dyn Error>> {
+        let inner = self.0.try_lock().unwrap();
+        let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
+        Ok(coll
+            .query(Q.empty(), QH.empty())
+            .find()?
+            .filter_map(Result::ok)
+            .map(|doc| doc.try_into())
+            .filter_map(Result::ok)
+            .collect())
     }
 
     pub fn get_cache(&self) -> HashMap<String, Vec<String>> {
@@ -99,8 +166,7 @@ impl DndDatabase {
         let coll = db.collection(collection)?;
         let res = coll
             .query(Q.empty(), QH.field("name").include())
-            .find()
-            .unwrap()
+            .find()?
             .collect::<EjdbResult<Vec<bson::Document>>>()?;
         Ok(res
             .iter()
@@ -122,6 +188,91 @@ impl DndDatabase {
             .ok_or(Box::new(bson::DecoderError::Unknown(
                 "Not found".to_owned(),
             )))
+    }
+
+    pub fn log_message(
+        &self,
+        message: &Message,
+        response: &Result<Option<String>, Box<dyn Error>>,
+    ) {
+        match self.try_log_message(message, response) {
+            Ok(_) => {}
+            Err(err) => error!("Failed to save message to db: {}", err),
+        }
+    }
+
+    fn try_log_message(
+        &self,
+        message: &Message,
+        response: &Result<Option<String>, Box<dyn Error>>,
+    ) -> Result<(), Box<dyn Error>> {
+        let inner = self.0.try_lock().unwrap();
+        let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
+
+        let user_id: i64 = message.from.id.into();
+        let chat_type = chat_type_to_string(&message.chat);
+        let request = message.text().unwrap_or_default();
+
+        let mut default_response = String::new();
+        let response = match response {
+            Ok(response) => match response {
+                None => &default_response,
+                Some(response) => response,
+            },
+            Err(err) => {
+                let mut err = format!("{}", err);
+                std::mem::swap(&mut default_response, &mut err);
+                &default_response
+            }
+        };
+
+        let timestamp = get_unix_time();
+
+        coll.save(bson! {
+            "timestamp" => timestamp,
+            "user_id" => user_id,
+            "chat_type" => chat_type,
+            "request" => request,
+            "response" => response
+        })?;
+
+        Ok(())
+    }
+}
+
+pub struct LogMessage {
+    timestamp: u64,
+    user_id: i64,
+    chat_type: String,
+    response: Option<String>,
+}
+
+fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
+    match chat_type {
+        MessageChat::Private(_) => "Private",
+        MessageChat::Group(_) => "Group",
+        MessageChat::Supergroup(_) => "Supergroup",
+        MessageChat::Unknown(_) => "Unknown",
+    }
+}
+
+fn get_unix_time() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+impl TryFrom<bson::ordered::OrderedDocument> for LogMessage {
+    type Error = bson::ValueAccessError;
+    fn try_from(value: bson::ordered::OrderedDocument) -> Result<Self, Self::Error> {
+        let timestamp = value.get_i64("timestamp")?;
+        Ok(LogMessage {
+            timestamp: timestamp as u64,
+            user_id: value.get_i64("user_id")?,
+            chat_type: value.get_str("chat_type")?.to_owned(),
+            response: value.get_str("response").map(str::to_owned).ok(),
+        })
     }
 }
 
@@ -149,7 +300,7 @@ mod test {
     fn test_get_stats() {
         init();
         let db = DndDatabase::new(get_db_path()).unwrap();
-        info!("{}", db.get_stats());
+        info!("{}", db.get_collection_stats().unwrap());
     }
 
     #[test]
