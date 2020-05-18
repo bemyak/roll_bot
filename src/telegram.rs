@@ -4,10 +4,16 @@ use std::error::Error;
 use std::time::Instant;
 
 use futures::StreamExt;
+use hyper::Client;
+use hyper_proxy::{Intercept, Proxy, ProxyConnector};
+use hyper_rustls::HttpsConnector;
 use rand::prelude::*;
 use regex::Regex;
-use telegram_bot::prelude::*;
-use telegram_bot::{Api, Message, MessageEntityKind, MessageKind, ParseMode, UpdateKind};
+use telegram_bot::{
+    connector::{default_connector, hyper::HyperConnector, Connector},
+    prelude::*,
+    Api, Message, MessageEntityKind, MessageKind, ParseMode, UpdateKind,
+};
 
 use crate::db::DndDatabase;
 
@@ -30,9 +36,11 @@ impl Bot {
 
         let cache = db.get_cache();
 
+        let connector = get_connector()?;
+
         Ok(Self {
             db,
-            api: Api::new(token),
+            api: Api::with_connector(token, connector),
             dice_regex: Regex::new(r"(?P<num>\d+)?(d|к|д)(?P<face>\d+)").unwrap(),
             cache,
             cache_timestamp: Instant::now(),
@@ -204,5 +212,29 @@ Suggestions and contributions are welcome.", PROJECT_URL);
             )
             .await?;
         Ok(())
+    }
+}
+
+pub fn get_connector() -> Result<Box<dyn Connector>, Box<dyn Error>> {
+    let proxy_url = env::var("roll_bot_http_proxy")
+        .or(env::var("ROLL_BOT_HTTP_PROXY"))
+        .or(env::var("http_proxy"))
+        .or(env::var("HTTP_PROXY"))
+        .or(env::var("https_proxy"))
+        .or(env::var("HTTPS_PROXY"))
+        .or(env::var("ftp_proxy"))
+        .or(env::var("FTP_PROXY"));
+
+    match proxy_url {
+        Ok(proxy_url) => {
+            info!("Running with proxy: {}", proxy_url);
+            let connector = HttpsConnector::new();
+            let proxy = Proxy::new(Intercept::All, proxy_url.parse()?);
+            let connector = ProxyConnector::from_proxy(connector, proxy)?;
+            Ok(Box::new(HyperConnector::new(
+                Client::builder().build(connector),
+            )))
+        }
+        Err(_) => Ok(default_connector()),
     }
 }

@@ -3,6 +3,9 @@ extern crate ejdb;
 extern crate futures;
 #[macro_use]
 extern crate log;
+extern crate hyper;
+extern crate hyper_proxy;
+extern crate hyper_rustls;
 extern crate rand;
 extern crate regex;
 extern crate reqwest;
@@ -37,10 +40,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Uncomment this when ready for production use
     // let db = DndDatabase::new("./roll_bot.ejdb")?;
-    let fetch_db = db.clone();
-    task::spawn(async move {
-        fetch_job(fetch_db).await;
-    });
+    // let fetch_db = db.clone();
+    // task::spawn(async move {
+    //     fetch_job(fetch_db).await;
+    // });
 
     let bot = telegram::Bot::new(db.clone())?;
 
