@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use ejdb::bson;
 use ejdb::bson::Bson;
@@ -14,6 +14,8 @@ use ejdb::Database;
 use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
 use telegram_bot::{Message, MessageChat, MessageText};
+
+use crate::get_unix_time;
 
 // System table should start with "_", so they will not be treated like D&D data collections
 const LOG_COLLECTION_NAME: &'static str = "_log";
@@ -77,60 +79,13 @@ impl DndDatabase {
         inner.timestamp
     }
 
-    pub fn get_collection_stats(&self) -> Result<String, Box<dyn Error>> {
+    pub fn get_metadata(&self) -> Result<ejdb::meta::DatabaseMetadata, Box<dyn Error>> {
         let inner = self.0.try_lock().unwrap();
-        Ok(inner
-            .db
-            .get_metadata()?
-            .collections()
-            .map(|col| format!("`{}`: `{}` records", col.name(), col.records()))
-            .collect::<Vec<_>>()
-            .join("\n"))
+        Ok(inner.db.get_metadata()?)
     }
 
     // This is terribly inefficient, but upstream EJDB bindings does not implement distinct queries :(
-    pub fn get_message_stats(&self) -> Result<String, Box<dyn Error>> {
-        let msgs = self.get_all_massages()?;
-        let now = get_unix_time();
-        let mount_ago = now - 60 * 60 * 24 * 30;
-
-        let msg_total = msgs.len();
-        let msg_total_month = msgs.iter().filter(|msg| msg.timestamp >= mount_ago).count();
-
-        let users: HashMap<i64, u64> = {
-            let mut users = HashMap::new();
-
-            msgs.iter().for_each(|msg| {
-                let old_ts = users.get(&msg.user_id);
-                match old_ts {
-                    None => {
-                        users.insert(msg.user_id, msg.timestamp);
-                    }
-                    Some(old_ts) => {
-                        if old_ts < &msg.timestamp {
-                            users.insert(msg.user_id, msg.timestamp);
-                        }
-                    }
-                }
-            });
-            users
-        };
-
-        let users_total = users.iter().count();
-        let users_total_month = users.iter().filter(|(_, ts)| ts >= &&mount_ago).count();
-
-        Ok(
-            format!(
-                "Total messages: `{}`\nMessages since last month: `{}`\nUnique users: `{}`\nUnique users since last month: `{}`",
-                msg_total,
-                msg_total_month,
-                users_total,
-                users_total_month
-            )
-        )
-    }
-
-    fn get_all_massages(&self) -> Result<Vec<LogMessage>, Box<dyn Error>> {
+    pub fn get_all_massages(&self) -> Result<Vec<LogMessage>, Box<dyn Error>> {
         let inner = self.0.try_lock().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
         Ok(coll
@@ -241,10 +196,10 @@ impl DndDatabase {
 }
 
 pub struct LogMessage {
-    timestamp: u64,
-    user_id: i64,
-    chat_type: String,
-    response: Option<String>,
+    pub timestamp: u64,
+    pub user_id: i64,
+    pub chat_type: String,
+    pub response: Option<String>,
 }
 
 fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
@@ -254,13 +209,6 @@ fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
         MessageChat::Supergroup(_) => "Supergroup",
         MessageChat::Unknown(_) => "Unknown",
     }
-}
-
-fn get_unix_time() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
 }
 
 impl TryFrom<bson::ordered::OrderedDocument> for LogMessage {
@@ -300,7 +248,7 @@ mod test {
     fn test_get_stats() {
         init();
         let db = DndDatabase::new(get_db_path()).unwrap();
-        info!("{}", db.get_collection_stats().unwrap());
+        info!("{:?}", db.get_metadata().unwrap());
     }
 
     #[test]

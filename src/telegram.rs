@@ -16,8 +16,8 @@ use telegram_bot::{
 };
 
 use crate::db::DndDatabase;
-
-const PROJECT_URL: &'static str = "https://gitlab.com/bemyak/roll_bot";
+use crate::format::*;
+use crate::PROJECT_URL;
 
 pub struct Bot {
     db: DndDatabase,
@@ -151,20 +151,7 @@ impl Bot {
     }
 
     async fn help(&self, message: Message, _arg: &str) -> Result<Option<String>, Box<dyn Error>> {
-        let help = format!("Hi! I'm a bot. The Dungeon Bot!
-I can help you with your Dungeons&Dragons game (5th edition). I can:
-
-/roll - roll a die. By default I have d20, but you can give me any number of dices! ex.: `/roll 2d6 +5`
-
-/mm - search for a monster. I'll look in every book in Candlekeep and find at least one. ex.: `/mm tarasque`
-
-/spell - search for a spell. I'll ask Elminster personally about it. ex.: `/spell fireball`
-
-/item - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
-
-My code is open like your brain to a Mind Flayer!
-You can get it [here]({}) (code, not brain)
-Suggestions and contributions are welcome.", PROJECT_URL);
+        let help = help_message();
 
         self.api
             .send(
@@ -198,10 +185,13 @@ Suggestions and contributions are welcome.", PROJECT_URL);
             86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
         };
 
+        let collection_metadata = self.db.get_metadata()?;
+        let messages = self.db.get_all_massages()?;
+
         let msg = format!(
             "*Table stats*\n{}\n\n*Usage stats*\n{}\n\nLast database update `{}` ago",
-            self.db.get_collection_stats()?,
-            self.db.get_message_stats()?,
+            format_collection_metadata(collection_metadata),
+            format_message_stats(messages)?,
             update_str,
         );
 

@@ -20,13 +20,15 @@ mod format;
 mod telegram;
 
 use std::error::Error;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[allow(unused_imports)]
 use tokio::task;
 use tokio::time;
 
 use db::DndDatabase;
+
+pub const PROJECT_URL: &'static str = "https://gitlab.com/bemyak/roll_bot";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -72,4 +74,11 @@ async fn fetch_job(mut db: DndDatabase) {
             }
         }
     }
+}
+
+pub fn get_unix_time() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }

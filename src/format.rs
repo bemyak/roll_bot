@@ -1,6 +1,12 @@
+use std::collections::HashMap;
+use std::error::Error;
 use std::fmt::Write;
 
 use ejdb::bson;
+
+use crate::db::LogMessage;
+use crate::get_unix_time;
+use crate::PROJECT_URL;
 
 pub fn format_document(doc: bson::Document) -> String {
     let mut res = String::new();
@@ -46,4 +52,68 @@ fn simple_format(bs: bson::Bson) -> String {
         bson::Bson::I64(num) => format!("{}", num),
         _ => panic!("Unknown type: {:?}", bs.element_type()),
     }
+}
+
+pub fn format_message_stats(msgs: Vec<LogMessage>) -> Result<String, Box<dyn Error>> {
+    let now = get_unix_time();
+    let mount_ago = now - 60 * 60 * 24 * 30;
+
+    let msg_total = msgs.len();
+    let msg_total_month = msgs.iter().filter(|msg| msg.timestamp >= mount_ago).count();
+
+    let users: HashMap<i64, u64> = {
+        let mut users = HashMap::new();
+
+        msgs.iter().for_each(|msg| {
+            let old_ts = users.get(&msg.user_id);
+            match old_ts {
+                None => {
+                    users.insert(msg.user_id, msg.timestamp);
+                }
+                Some(old_ts) => {
+                    if old_ts < &msg.timestamp {
+                        users.insert(msg.user_id, msg.timestamp);
+                    }
+                }
+            }
+        });
+        users
+    };
+
+    let users_total = users.iter().count();
+    let users_total_month = users.iter().filter(|(_, ts)| ts >= &&mount_ago).count();
+
+    Ok(
+        format!(
+            "Total messages: `{}`\nMessages since last month: `{}`\nUnique users: `{}`\nUnique users since last month: `{}`",
+            msg_total,
+            msg_total_month,
+            users_total,
+            users_total_month
+        )
+    )
+}
+
+pub fn format_collection_metadata(meta: ejdb::meta::DatabaseMetadata) -> String {
+    meta.collections()
+        .map(|col| format!("`{}`: `{}` records", col.name(), col.records()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn help_message() -> String {
+    format!("Hi! I'm a bot. The Dungeon Bot!
+I can help you with your Dungeons&Dragons game (5th edition). I can:
+
+/roll - roll a die. By default I have d20, but you can give me any number of dices! ex.: `/roll 2d6 +5`
+
+/mm - search for a monster. I'll look in every book in Candlekeep and find at least one. ex.: `/mm tarasque`
+
+/spell - search for a spell. I'll ask Elminster personally about it. ex.: `/spell fireball`
+
+/item - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
+
+My code is open like your brain to a Mind Flayer!
+You can get it [here]({}) (code, not brain)
+Suggestions and contributions are welcome.", PROJECT_URL)
 }
