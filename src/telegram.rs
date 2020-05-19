@@ -64,6 +64,7 @@ impl Bot {
     }
 
     async fn process_message(&self, message: Message) -> Result<(), Box<dyn Error>> {
+        let start_processing = Instant::now();
         match message.clone().kind {
             MessageKind::Text { data, entities } => {
                 let mut entities_iter = entities.into_iter().peekable();
@@ -90,7 +91,14 @@ impl Bot {
                                 _ => self.unknown(message.clone(), cmd).await,
                             };
 
-                            self.db.log_message(&message, &cmd_result);
+                            self.db.log_message(
+                                &message,
+                                &cmd_result,
+                                Instant::now()
+                                    .checked_duration_since(start_processing)
+                                    .unwrap()
+                                    .as_millis() as u64,
+                            );
 
                             if let Err(err) = cmd_result {
                                 error!("Error while processing message {}: {}", data, err);
@@ -189,7 +197,7 @@ impl Bot {
         let messages = self.db.get_all_massages()?;
 
         let msg = format!(
-            "*Table stats*\n{}\n\n*Usage stats*\n{}\n\nLast database update `{}` ago",
+            "*Table stats*\n{}\n\n*Usage stats* (since last month / total)\n{}\n\nLast database update `{}` ago",
             format_collection_metadata(collection_metadata),
             format_message_stats(messages)?,
             update_str,

@@ -149,8 +149,9 @@ impl DndDatabase {
         &self,
         message: &Message,
         response: &Result<Option<String>, Box<dyn Error>>,
+        latency: u64,
     ) {
-        match self.try_log_message(message, response) {
+        match self.try_log_message(message, response, latency) {
             Ok(_) => {}
             Err(err) => error!("Failed to save message to db: {}", err),
         }
@@ -160,6 +161,7 @@ impl DndDatabase {
         &self,
         message: &Message,
         response: &Result<Option<String>, Box<dyn Error>>,
+        latency: u64,
     ) -> Result<(), Box<dyn Error>> {
         let inner = self.0.try_lock().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
@@ -183,13 +185,18 @@ impl DndDatabase {
 
         let timestamp = get_unix_time();
 
-        coll.save(bson! {
+        let bson = bson! {
             "timestamp" => timestamp,
             "user_id" => user_id,
             "chat_type" => chat_type,
             "request" => request,
-            "response" => response
-        })?;
+            "response" => response,
+            "latency" => latency
+        };
+
+        trace!("{}", bson);
+
+        coll.save(bson)?;
 
         Ok(())
     }
@@ -200,6 +207,7 @@ pub struct LogMessage {
     pub user_id: i64,
     pub chat_type: String,
     pub response: Option<String>,
+    pub latency: u64,
 }
 
 fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
@@ -215,11 +223,13 @@ impl TryFrom<bson::ordered::OrderedDocument> for LogMessage {
     type Error = bson::ValueAccessError;
     fn try_from(value: bson::ordered::OrderedDocument) -> Result<Self, Self::Error> {
         let timestamp = value.get_i64("timestamp")?;
+        let latency = value.get_i64("latency")?;
         Ok(LogMessage {
             timestamp: timestamp as u64,
             user_id: value.get_i64("user_id")?,
             chat_type: value.get_str("chat_type")?.to_owned(),
             response: value.get_str("response").map(str::to_owned).ok(),
+            latency: latency as u64,
         })
     }
 }
