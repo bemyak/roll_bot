@@ -1,5 +1,3 @@
-extern crate ejdb;
-
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -15,11 +13,10 @@ use ejdb::query::{Q, QH};
 use ejdb::Database;
 use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
-use telegram_bot::{Message, MessageChat, MessageText};
 
 use crate::get_unix_time;
 
-// System table should start with "_", so they will not be treated like D&D data collections
+// System table should start with an underscore, so they will not be treated like D&D data collections
 const LOG_COLLECTION_NAME: &'static str = "_log";
 
 pub struct DndDatabase(Arc<Mutex<Inner>>);
@@ -149,11 +146,13 @@ impl DndDatabase {
 
     pub fn log_message(
         &self,
-        message: &Message,
+        user_id: i64,
+        chat_type: &str,
+        request: String,
         response: &Result<Option<String>, Box<dyn Error>>,
         latency: u64,
     ) {
-        match self.try_log_message(message, response, latency) {
+        match self.try_log_message(user_id, chat_type, request, response, latency) {
             Ok(_) => {}
             Err(err) => error!("Failed to save message to db: {}", err),
         }
@@ -161,16 +160,14 @@ impl DndDatabase {
 
     fn try_log_message(
         &self,
-        message: &Message,
+        user_id: i64,
+        chat_type: &str,
+        request: String,
         response: &Result<Option<String>, Box<dyn Error>>,
         latency: u64,
     ) -> Result<(), Box<dyn Error>> {
         let inner = self.0.try_lock().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
-
-        let user_id: i64 = message.from.id.into();
-        let chat_type = chat_type_to_string(&message.chat);
-        let request = message.text().unwrap_or_default();
 
         let mut default_response = String::new();
         let response = match response {
@@ -210,15 +207,6 @@ pub struct LogMessage {
     pub chat_type: String,
     pub response: Option<String>,
     pub latency: u64,
-}
-
-fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
-    match chat_type {
-        MessageChat::Private(_) => "Private",
-        MessageChat::Group(_) => "Group",
-        MessageChat::Supergroup(_) => "Supergroup",
-        MessageChat::Unknown(_) => "Unknown",
-    }
 }
 
 impl TryFrom<bson::ordered::OrderedDocument> for LogMessage {

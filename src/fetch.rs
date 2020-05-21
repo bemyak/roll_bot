@@ -1,5 +1,3 @@
-extern crate reqwest;
-
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;

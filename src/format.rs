@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::Write;
 
 use ejdb::bson;
+use telegram_bot::MessageChat;
 
 use crate::db::LogMessage;
 use crate::get_unix_time;
@@ -51,6 +52,15 @@ fn simple_format(bs: bson::Bson) -> String {
         bson::Bson::I32(num) => format!("{}", num),
         bson::Bson::I64(num) => format!("{}", num),
         _ => panic!("Unknown type: {:?}", bs.element_type()),
+    }
+}
+
+pub fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
+    match chat_type {
+        MessageChat::Private(_) => "Private",
+        MessageChat::Group(_) => "Group",
+        MessageChat::Supergroup(_) => "Supergroup",
+        MessageChat::Unknown(_) => "Unknown",
     }
 }
 

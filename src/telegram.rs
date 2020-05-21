@@ -1,10 +1,3 @@
-extern crate futures;
-extern crate hyper;
-extern crate hyper_proxy;
-extern crate hyper_rustls;
-extern crate rand;
-extern crate regex;
-
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -25,6 +18,7 @@ use telegram_bot::{
 use crate::db::DndDatabase;
 use crate::format::*;
 use crate::PROJECT_URL;
+use crate::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 
 lazy_static! {
     static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\d+)?(d|к|д)(?P<face>\d+)").unwrap();
@@ -85,6 +79,8 @@ impl Bot {
                             let cmd_end = (entity.offset + entity.length) as usize;
                             let cmd = &data[cmd_start..cmd_end];
 
+                            let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
+
                             let arg_start = cmd_end;
                             let arg_end = entities_iter
                                 .peek()
@@ -100,8 +96,24 @@ impl Bot {
                                 _ => self.unknown(message.clone(), cmd).await,
                             };
 
+                            timer.observe_duration();
+
+                            let user_id: i64 = message.from.id.into();
+                            let chat_type = chat_type_to_string(&message.chat);
+                            let request = message.text().unwrap_or_default();
+
+                            MESSAGE_COUNTER
+                                .with_label_values(&[
+                                    format!("{}", user_id).as_str(),
+                                    chat_type_to_string(&message.chat),
+                                    cmd,
+                                ])
+                                .inc();
+
                             self.db.log_message(
-                                &message,
+                                user_id,
+                                chat_type,
+                                request,
                                 &cmd_result,
                                 Instant::now()
                                     .checked_duration_since(start_processing)
@@ -110,6 +122,7 @@ impl Bot {
                             );
 
                             if let Err(err) = cmd_result {
+                                ERROR_COUNTER.with_label_values(&[cmd]).inc();
                                 error!("Error while processing message {}: {}", data, err);
                                 self.report_error(
                                     message.clone(),
