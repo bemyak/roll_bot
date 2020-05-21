@@ -1,14 +1,9 @@
 #![allow(dead_code)]
-extern crate ejdb;
-extern crate futures;
 #[macro_use]
 extern crate log;
-extern crate hyper;
-extern crate hyper_proxy;
-extern crate hyper_rustls;
-extern crate rand;
-extern crate regex;
-extern crate reqwest;
+#[macro_use]
+extern crate lazy_static;
+
 extern crate serde_json;
 extern crate simplelog;
 extern crate telegram_bot;
@@ -58,20 +53,18 @@ async fn fetch_job(mut db: DndDatabase) {
     let mut interval = time::interval(Duration::from_secs(60 * 60 * 24));
 
     loop {
-        {
-            interval.tick().await;
+        interval.tick().await;
 
-            let result = fetch::fetch().await;
-            match result {
-                Ok(data) => {
-                    for (collection, items) in data {
-                        db.save_collection(items, collection).unwrap_or_else(|err| {
-                            error!("Error occurred while saving data to DB: {}", err)
-                        });
-                    }
+        let result = fetch::fetch().await;
+        match result {
+            Ok(data) => {
+                for (collection, items) in data {
+                    db.save_collection(items, collection).unwrap_or_else(|err| {
+                        error!("Error occurred while saving data to DB: {}", err)
+                    });
                 }
-                Err(err) => error!("Error occurred while fetching data: {}", err),
             }
+            Err(err) => error!("Error occurred while fetching data: {}", err),
         }
     }
 }

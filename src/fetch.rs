@@ -1,9 +1,10 @@
+extern crate reqwest;
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 
 use futures::future::{join_all, BoxFuture, FutureExt};
-use reqwest;
 use serde_json::Value as JsonValue;
 
 const BASE_URL: &str = "https://5e.tools/data";

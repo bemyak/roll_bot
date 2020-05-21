@@ -1,3 +1,5 @@
+extern crate ejdb;
+
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::convert::TryFrom;

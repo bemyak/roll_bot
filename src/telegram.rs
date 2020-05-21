@@ -1,3 +1,10 @@
+extern crate futures;
+extern crate hyper;
+extern crate hyper_proxy;
+extern crate hyper_rustls;
+extern crate rand;
+extern crate regex;
+
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -19,10 +26,13 @@ use crate::db::DndDatabase;
 use crate::format::*;
 use crate::PROJECT_URL;
 
+lazy_static! {
+    static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\d+)?(d|к|д)(?P<face>\d+)").unwrap();
+}
+
 pub struct Bot {
     db: DndDatabase,
     api: Api,
-    dice_regex: Regex,
     cache: HashMap<String, Vec<String>>,
     cache_timestamp: Instant,
 }
@@ -41,7 +51,6 @@ impl Bot {
         Ok(Self {
             db,
             api: Api::with_connector(token, connector),
-            dice_regex: Regex::new(r"(?P<num>\d+)?(d|к|д)(?P<face>\d+)").unwrap(),
             cache,
             cache_timestamp: Instant::now(),
         })
@@ -223,9 +232,7 @@ pub fn get_connector() -> Result<Box<dyn Connector>, Box<dyn Error>> {
         .or(env::var("http_proxy"))
         .or(env::var("HTTP_PROXY"))
         .or(env::var("https_proxy"))
-        .or(env::var("HTTPS_PROXY"))
-        .or(env::var("ftp_proxy"))
-        .or(env::var("FTP_PROXY"));
+        .or(env::var("HTTPS_PROXY"));
 
     match proxy_url {
         Ok(proxy_url) => {
