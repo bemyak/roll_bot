@@ -16,7 +16,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use prometheus::{Encoder, HistogramVec, IntCounterVec, TextEncoder};
+use prometheus::{Encoder, HistogramVec, IntCounterVec, IntGaugeVec, TextEncoder};
 #[allow(unused_imports)]
 use tokio::task;
 use tokio::time;
@@ -41,6 +41,20 @@ lazy_static! {
         &["command"]
     )
     .unwrap();
+    pub static ref COLLECTION_ITEM_GAUGE: IntGaugeVec = {
+        let opts = opts!(
+            "collection_item_count",
+            "Number of items in each collection"
+        );
+        register_int_gauge_vec!(opts, &["collection"]).unwrap()
+    };
+    pub static ref COLLECTION_TIMESTAMP_GAUGE: IntGaugeVec = {
+        let opts = opts!(
+            "collection_update_timestamp",
+            "Last database update, UNIX timestamp"
+        );
+        register_int_gauge_vec!(opts, &["collection"]).unwrap()
+    };
 }
 
 #[tokio::main]

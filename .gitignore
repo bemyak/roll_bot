@@ -6,6 +6,9 @@
 rls
 .project
 
+# Terraform state
+.terraform/
+
 # Prodution database
 /roll_bot.ejdb
 

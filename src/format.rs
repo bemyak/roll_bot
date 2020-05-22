@@ -57,10 +57,10 @@ fn simple_format(bs: bson::Bson) -> String {
 
 pub fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
     match chat_type {
-        MessageChat::Private(_) => "Private",
-        MessageChat::Group(_) => "Group",
-        MessageChat::Supergroup(_) => "Supergroup",
-        MessageChat::Unknown(_) => "Unknown",
+        MessageChat::Private(_) => "private",
+        MessageChat::Group(_) => "group",
+        MessageChat::Supergroup(_) => "supergroup",
+        MessageChat::Unknown(_) => "unknown",
     }
 }
 

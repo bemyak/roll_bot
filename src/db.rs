@@ -14,7 +14,7 @@ use ejdb::Database;
 use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
 
-use crate::get_unix_time;
+use crate::{get_unix_time, COLLECTION_ITEM_GAUGE, COLLECTION_TIMESTAMP_GAUGE};
 
 // System table should start with an underscore, so they will not be treated like D&D data collections
 const LOG_COLLECTION_NAME: &'static str = "_log";
@@ -62,7 +62,7 @@ impl DndDatabase {
         inner.db.drop_collection(collection, false)?;
         let coll = inner.db.collection(collection)?;
         coll.index("name").string(false).set()?;
-        arr.into_iter()
+        arr.iter()
             .filter_map(|elem| elem.as_document())
             .for_each(|elem| {
                 let res = coll.save(elem);
@@ -70,6 +70,15 @@ impl DndDatabase {
                     error!("Failed to save document: {}", e)
                 }
             });
+
+        COLLECTION_TIMESTAMP_GAUGE
+            .with_label_values(&[collection])
+            .set(get_unix_time() as i64);
+
+        COLLECTION_ITEM_GAUGE
+            .with_label_values(&[collection])
+            .set(arr.len() as i64);
+
         Ok(())
     }
 
