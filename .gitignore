@@ -8,6 +8,7 @@ rls
 
 # Terraform state
 .terraform/
+*tfstate*
 
 # Prodution database
 /roll_bot.ejdb
