@@ -36,7 +36,7 @@ terraform-plan:
     - alias convert_report="jq -r '([.resource_changes[]?.change.actions?]|flatten)|{\"create\":(map(select(.==\"create\"))|length),\"update\":(map(select(.==\"update\"))|length),\"delete\":(map(select(.==\"delete\"))|length)}'"
     - cd deploy/terraform
     - terraform init
-    - terraform verify
+    - terraform validate
     - terraform plan -out=$TF_PLAN
     - terraform show --json $TF_PLAN | convert_report > $TF_PLAN_JSON
   artifacts:
