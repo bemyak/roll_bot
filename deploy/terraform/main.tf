@@ -1,5 +1,10 @@
 terraform {
   required_version = ">= 0.12.0"
+  backend "http" {
+    # Address should be passed with the CLI param `-backend-config="address=$TF_STATE_URL"`
+    # address       = "https://objectstorage.eu-zurich-1.oraclecloud.com/p/<SUPER_SECURE_HASH>/b/tfstate/o/terraform.tfstate"
+    update_method = "PUT"
+  }
 }
 
 resource "oci_core_instance" "rollbot" {

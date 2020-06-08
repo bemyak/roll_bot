@@ -5,6 +5,7 @@
 .idea
 rls
 .project
+.devcontainer
 
 # Terraform state
 .terraform/

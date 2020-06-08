@@ -7,6 +7,8 @@ variables:
   TF_PLAN: plan.tfplan
   TF_PLAN_JSON: tfplan.json
   TF_STATE: ./tfstate.json
+  TF_URL: https://releases.hashicorp.com/terraform/0.12.26/terraform_0.12.26_linux_amd64.zip
+  TF_INVENTORY_URL: https://github.com/adammck/terraform-inventory/releases/download/v0.9/terraform-inventory_0.9_linux_amd64.zip
 
 test:
   # We need to use an image with GLIBC <= 2.17 to be compatible with CentOS 7
@@ -32,13 +34,15 @@ terraform-plan:
   image: alpine:latest
   stage: compile
   script:
-    - apk --no-cache add terraform jq
+    - apk --no-cache add jq
     - alias convert_report="jq -r '([.resource_changes[]?.change.actions?]|flatten)|{\"create\":(map(select(.==\"create\"))|length),\"update\":(map(select(.==\"update\"))|length),\"delete\":(map(select(.==\"delete\"))|length)}'"
     - cd deploy/terraform
-    - terraform init
-    - terraform validate
-    - terraform plan -out=$TF_PLAN
-    - terraform show --json $TF_PLAN | convert_report > $TF_PLAN_JSON
+    - wget $TF_URL
+    - unzip "$(basename $TF_URL)"
+    - ./terraform init -backend-config="address=$TF_STATE_URL"
+    - ./terraform validate
+    - ./terraform plan -out=$TF_PLAN
+    - ./terraform show --json $TF_PLAN | convert_report > $TF_PLAN_JSON
   artifacts:
     name: plan
     paths:
@@ -50,13 +54,14 @@ terraform-apply:
   image: alpine:latest
   stage: terraform
   script:
-    - apk --no-cache add terraform
     - cd deploy/terraform
-    - terraform init
-    - terraform apply -input=false $PLAN
+    - wget $TF_URL
+    - unzip "$(basename $TF_URL)"
+    - ./terraform init -backend-config="address=$TF_STATE_URL"
+    - ./terraform apply -input=false $PLAN
     # There might be a bug with public ip assignment, so we need to apply twice :)
-    - terraform apply -input=false $PLAN
-    - terraform show -json > ../ansible/tfstate.json
+    - ./terraform apply -input=false $PLAN
+    - ./terraform show -json > ../ansible/tfstate.json
   only:
     - master
   artifacts:
@@ -72,6 +77,6 @@ ansible:
     - apk add ansible
     - cd deploy/ansible
     - ansible-galaxy install -r requirements.yml
-    - wget https://github.com/adammck/terraform-inventory/releases/download/v0.9/terraform-inventory_0.9_linux_amd64.zip
-    - unzip terraform-inventory_0.9_linux_amd64.zip
+    - wget $TF_INVENTORY_URL
+    - unzip "$(basename $TF_INVENTORY_URL)"
     - ansible-playbook -i ./terraform-inventory -u ubuntu site.yml
