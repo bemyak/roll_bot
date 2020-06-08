@@ -35,7 +35,7 @@ terraform-plan:
   image: alpine:latest
   stage: compile
   script:
-    - apk --no-cache add jq
+    - apk --no-cache add jq curl
     - alias convert_report="jq -r '([.resource_changes[]?.change.actions?]|flatten)|{\"create\":(map(select(.==\"create\"))|length),\"update\":(map(select(.==\"update\"))|length),\"delete\":(map(select(.==\"delete\"))|length)}'"
     - cd deploy/terraform
     - wget $TF_URL
