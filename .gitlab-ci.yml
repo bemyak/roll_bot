@@ -40,6 +40,8 @@ terraform-plan:
     - cd deploy/terraform
     - wget $TF_URL
     - unzip "$(basename $TF_URL)"
+    - curl -s --head https://iaas.$TF_VAR_region.oraclecloud.com | grep Date
+    - date
     - ./terraform init -backend-config="address=$TF_STATE_URL"
     - ./terraform validate
     - ./terraform plan -out=$TF_PLAN
