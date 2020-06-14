@@ -92,7 +92,7 @@ ansible:
     ANSIBLE_HOST_KEY_CHECKING: "False"
   script:
     - apk add openssh ansible git
-    - pip3 install jmespath
+    - /usr/bin/pip3 install jmespath
     - mkdir ~/.ssh
     - touch ~/.ssh/id_rsa
     - chmod 0600 /root/.ssh/id_rsa
