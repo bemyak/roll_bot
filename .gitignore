@@ -12,6 +12,4 @@ rls
 *tfstate*
 
 # Prodution database
-/roll_bot.ejdb
-
-test_data/
+/roll_bot.ejdb*

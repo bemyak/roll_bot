@@ -16,7 +16,7 @@ test:
   stage: compile
   script:
     - apt update && apt install -y cmake clang
-    - cargo test
+    - cargo test -- --test-threads=1
 
 build:
   image: rust:stretch
