@@ -91,7 +91,7 @@ ansible:
   variables:
     ANSIBLE_HOST_KEY_CHECKING: "False"
   script:
-    - apk add openssh ansible git py3-jmespath tar
+    - apk add openssh ansible git py3-jmespath tar unzip
     - mkdir ~/.ssh
     - touch ~/.ssh/id_rsa
     - chmod 0600 /root/.ssh/id_rsa
