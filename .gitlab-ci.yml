@@ -77,9 +77,11 @@ ansible:
   variables:
     ANSIBLE_HOST_KEY_CHECKING: "False"
   script:
-    - apk add ansible
+    - apk add ansible git
     - cd deploy/ansible
     - ansible-galaxy install -r requirements.yml
     - wget $TF_INVENTORY_URL
     - unzip "$(basename $TF_INVENTORY_URL)"
     - ansible-playbook -i ./terraform-inventory -u ubuntu site.yml
+  only:
+    - master
