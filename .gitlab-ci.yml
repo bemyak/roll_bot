@@ -4,6 +4,7 @@ stages:
   - deploy
 
 variables:
+  CARGO_HOME: $CI_PROJECT_DIR/cargo
   # File to pass terraform state between stages
   TF_PLAN: plan.tfplan
   # Special format for Gitlab to parse and display in MR
@@ -20,6 +21,10 @@ test:
   script:
     - apt update && apt install -y cmake clang
     - cargo test -- --test-threads=1
+  cache:
+    paths:
+      - cargo/
+      - target/
   except:
     - master
 
@@ -30,11 +35,15 @@ build:
     # Cmake and Clang are needed to build ejdb
     - apt update && apt install -y cmake clang
     - cargo build --release
-  only:
-    - master
+  cache:
+    paths:
+      - cargo/
+      - target/
   artifacts:
     paths:
       - target/release/roll_bot
+  only:
+  - master
 
 terraform-plan:
   image: alpine:latest
@@ -83,6 +92,7 @@ ansible:
     ANSIBLE_HOST_KEY_CHECKING: "False"
   script:
     - apk add openssh ansible git
+    - pip3 install jmespath
     - mkdir ~/.ssh
     - touch ~/.ssh/id_rsa
     - chmod 0600 /root/.ssh/id_rsa
