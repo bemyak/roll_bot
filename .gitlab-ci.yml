@@ -17,6 +17,8 @@ test:
   script:
     - apt update && apt install -y cmake clang
     - cargo test -- --test-threads=1
+  except:
+    - master
 
 build:
   image: rust:stretch
@@ -78,6 +80,8 @@ ansible:
     ANSIBLE_HOST_KEY_CHECKING: "False"
   script:
     - apk add ansible git
+    - mkdir ~/.ssh
+    - echo $SSH_PRIVATE_KEY > ~/.ssh/id_rsa
     - cd deploy/ansible
     - ansible-galaxy install -r requirements.yml
     - wget $TF_INVENTORY_URL
