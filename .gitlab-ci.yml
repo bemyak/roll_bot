@@ -79,8 +79,10 @@ ansible:
   variables:
     ANSIBLE_HOST_KEY_CHECKING: "False"
   script:
-    - apk add ansible git
+    - apk add openssh ansible git
     - mkdir ~/.ssh
+    - touch ~/.ssh/id_rsa
+    - chmod 0600 /root/.ssh/id_rsa
     - echo $SSH_PRIVATE_KEY > ~/.ssh/id_rsa
     - cd deploy/ansible
     - ansible-galaxy install -r requirements.yml
