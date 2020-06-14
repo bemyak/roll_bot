@@ -4,9 +4,12 @@ stages:
   - deploy
 
 variables:
+  # File to pass terraform state between stages
   TF_PLAN: plan.tfplan
+  # Special format for Gitlab to parse and display in MR
   TF_PLAN_JSON: tfplan.json
-  TF_STATE: ./tfstate.json
+  # Regular JSON output to pass state to ansible (read by terraform-inventory util)
+  TF_STATE: tfstate.json
   TF_URL: https://releases.hashicorp.com/terraform/0.12.26/terraform_0.12.26_linux_amd64.zip
   TF_INVENTORY_URL: https://github.com/adammck/terraform-inventory/releases/download/v0.9/terraform-inventory_0.9_linux_amd64.zip
 
@@ -63,15 +66,15 @@ terraform-apply:
     - wget $TF_URL
     - unzip "$(basename $TF_URL)"
     - ./terraform init -backend-config="address=$TF_STATE_URL"
-    - ./terraform apply -input=false $PLAN
+    - ./terraform apply -input=false $TF_PLAN
     # There might be a bug with public ip assignment, so we need to apply twice :)
-    - ./terraform apply -input=false $PLAN
-    - ./terraform show -json > ../ansible/tfstate.json
+    - ./terraform apply -input=false
+    - ./terraform show -json > ../ansible/$TF_STATE
   only:
     - master
   artifacts:
     paths:
-      - deploy/ansible/tfstate.json
+      - deploy/ansible/$TF_STATE
 
 ansible:
   image: alpine:latest
@@ -83,7 +86,7 @@ ansible:
     - mkdir ~/.ssh
     - touch ~/.ssh/id_rsa
     - chmod 0600 /root/.ssh/id_rsa
-    - echo $SSH_PRIVATE_KEY > ~/.ssh/id_rsa
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
     - cd deploy/ansible
     - ansible-galaxy install -r requirements.yml
     - wget $TF_INVENTORY_URL
