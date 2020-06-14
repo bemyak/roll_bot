@@ -1,31 +1,26 @@
 [package]
-name = "roll_bot"
-version = "0.1.0"
-authors = ["Sergei Gureev <bemyak@pm.me>"]
+authors = [ "Sergei Gureev <bemyak@pm.me>" ]
 edition = "2018"
+name    = "roll_bot"
+version = "0.1.0"
 
 [profile.release]
-lto = true
+lto   = true
 panic = 'abort'
 
 [dependencies]
-log = "0.4"
-futures = "0.3"
-serde_json = "1.0"
-ejdb = "0.4"
-rand = "0.7"
-regex = "1"
-hyper = "0.13"
-hyper-proxy = "0.7"
+ejdb         = "0.4"
+futures      = { version = "0.3", default-features = false }
+hyper        = "0.13"
+hyper-proxy  = { version = "0.7", default-features = false, features = [ "rustls" ] }
 hyper-rustls = "0.20"
-lazy_static = "1.4"
-simplelog = { version = "0.8", features = ["test"] }
-tokio = { version = "0.2", features = ["rt-threaded", "macros"] }
-prometheus = { version = "0.9", features = ["process"] }
-reqwest = { version = "0.10", features = [
-    "json",
-    "rustls-tls"
-], default-features = false }
-telegram-bot = { version = "0.7", features = [
-    "rustls"
-], default-features = false }
+lazy_static  = "1.4"
+log          = "0.4"
+prometheus   = { version = "0.9", features = [ "process" ] }
+rand         = "0.7"
+regex        = "1"
+reqwest      = { version = "0.10", features = [ "json", "rustls-tls" ], default-features = false }
+serde_json   = "1.0"
+simplelog    = { version = "0.8", features = [ "test" ] }
+telegram-bot = { version = "0.7", features = [ "rustls" ], default-features = false }
+tokio        = { version = "0.2", features = [ "rt-threaded", "macros" ] }

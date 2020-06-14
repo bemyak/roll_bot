@@ -1,0 +1,87 @@
+stages:
+  - compile
+  - terraform
+  - deploy
+
+variables:
+  TF_PLAN: plan.tfplan
+  TF_PLAN_JSON: tfplan.json
+  TF_STATE: ./tfstate.json
+  TF_URL: https://releases.hashicorp.com/terraform/0.12.26/terraform_0.12.26_linux_amd64.zip
+  TF_INVENTORY_URL: https://github.com/adammck/terraform-inventory/releases/download/v0.9/terraform-inventory_0.9_linux_amd64.zip
+
+test:
+  # We need to use an image with GLIBC <= 2.17 to be compatible with CentOS 7
+  image: rust:stretch
+  stage: compile
+  script:
+    - apt update && apt install -y cmake clang
+    - cargo test -- --test-threads=1
+
+build:
+  image: rust:stretch
+  stage: compile
+  script:
+    # Cmake and Clang are needed to build ejdb
+    - apt update && apt install -y cmake clang
+    - cargo build --release
+  only:
+    - master
+  artifacts:
+    paths:
+      - target/release/roll_bot
+
+terraform-plan:
+  image: alpine:latest
+  stage: compile
+  script:
+    - apk --no-cache add jq curl
+    - alias convert_report="jq -r '([.resource_changes[]?.change.actions?]|flatten)|{\"create\":(map(select(.==\"create\"))|length),\"update\":(map(select(.==\"update\"))|length),\"delete\":(map(select(.==\"delete\"))|length)}'"
+    - cd deploy/terraform
+    - wget $TF_URL
+    - unzip "$(basename $TF_URL)"
+    - curl -s --head https://iaas.$TF_VAR_region.oraclecloud.com | grep Date
+    - date
+    - ./terraform init -backend-config="address=$TF_STATE_URL"
+    - ./terraform validate
+    - ./terraform plan -out=$TF_PLAN
+    - ./terraform show --json $TF_PLAN | convert_report > $TF_PLAN_JSON
+  artifacts:
+    name: plan
+    paths:
+      - deploy/terraform/$TF_PLAN
+    reports:
+      terraform: deploy/terraform/$TF_PLAN_JSON
+
+terraform-apply:
+  image: alpine:latest
+  stage: terraform
+  script:
+    - cd deploy/terraform
+    - wget $TF_URL
+    - unzip "$(basename $TF_URL)"
+    - ./terraform init -backend-config="address=$TF_STATE_URL"
+    - ./terraform apply -input=false $PLAN
+    # There might be a bug with public ip assignment, so we need to apply twice :)
+    - ./terraform apply -input=false $PLAN
+    - ./terraform show -json > ../ansible/tfstate.json
+  only:
+    - master
+  artifacts:
+    paths:
+      - deploy/ansible/tfstate.json
+
+ansible:
+  image: alpine:latest
+  stage: deploy
+  variables:
+    ANSIBLE_HOST_KEY_CHECKING: "False"
+  script:
+    - apk add ansible git
+    - cd deploy/ansible
+    - ansible-galaxy install -r requirements.yml
+    - wget $TF_INVENTORY_URL
+    - unzip "$(basename $TF_INVENTORY_URL)"
+    - ansible-playbook -i ./terraform-inventory -u ubuntu site.yml
+  only:
+    - master

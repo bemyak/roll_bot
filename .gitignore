@@ -5,11 +5,11 @@
 .idea
 rls
 .project
+.devcontainer
 
 # Terraform state
 .terraform/
+*tfstate*
 
 # Prodution database
-/roll_bot.ejdb
-
-test_data/
+/roll_bot.ejdb*

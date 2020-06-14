@@ -1,0 +1,40 @@
+---
+
+- name: Allow incoming connection from prometheus
+  firewalld:
+    source: "{{ monitor_private_ip }}/32"
+    zone: trusted
+    permanent: yes
+    immediate: yes
+    state: enabled
+  become: yes
+
+- name: Create user
+  user:
+    name: "{{ rollbot_user}}"
+    home: "{{ rollbot_install_dir }}"
+    create_home: yes
+    system: yes
+  become: yes
+
+- name: Install roll_bot binary
+  copy:
+    src: "{{ role_path }}/../../../../target/release/roll_bot"
+    dest: "{{ rollbot_install_dir }}/"
+    mode: "0771"
+  become: yes
+  
+- name: Install systemd unit file
+  template:
+    src: roll_bot.service.j2
+    dest: /etc/systemd/system/roll_bot.service
+  become: yes
+
+
+- name: Start and enable roll_bot
+  systemd:
+    name: roll_bot
+    daemon_reload: yes
+    enabled: yes
+    state: restarted
+  become: yes

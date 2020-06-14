@@ -1,0 +1,16 @@
+[Unit]
+Description=Roll Bot
+Documentation=https://gitlab.com/bemyak/roll_bot
+After=network-online.target
+Wants=network-online.target systemd-networkd-wait-online.service
+
+[Service]
+Restart=on-failure
+User={{ rollbot_user }}
+Group={{ rollbot_user }}
+Environment=ROLL_BOT_TOKEN={{ rollbot_telegram_token }}
+WorkingDirectory={{ rollbot_install_dir }}
+ExecStart={{ rollbot_install_dir }}/roll_bot
+
+[Install]
+WantedBy=multi-user.target

@@ -24,6 +24,7 @@ use tokio::time;
 use db::DndDatabase;
 
 pub const PROJECT_URL: &'static str = "https://gitlab.com/bemyak/roll_bot";
+pub const METRICS_PORT: u16 = 9889;
 pub const METRICS_ENDPOINT: &'static str = "/metrics";
 
 lazy_static! {
@@ -67,14 +68,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     task::spawn(async move { serve_metrics().await });
 
     // Use this while testing to avoid unnecessary loading 5e.tools
-    let db = DndDatabase::new("./test_data/roll_bot.ejdb")?;
+    // let db = DndDatabase::new("./test_data/roll_bot.ejdb")?;
 
     // Uncomment this when ready for production use
-    // let db = DndDatabase::new("./roll_bot.ejdb")?;
-    // let fetch_db = db.clone();
-    // task::spawn(async move {
-    //     fetch_job(fetch_db).await;
-    // });
+    let db = DndDatabase::new("./roll_bot.ejdb")?;
+    let fetch_db = db.clone();
+    task::spawn(async move {
+        fetch_job(fetch_db).await;
+    });
 
     let bot = telegram::Bot::new(db.clone())?;
 
@@ -104,7 +105,7 @@ async fn fetch_job(mut db: DndDatabase) {
 }
 
 async fn serve_metrics() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let metrics_addr = ([127, 0, 0, 1], 3000).into();
+    let metrics_addr = ([0, 0, 0, 0], METRICS_PORT).into();
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(metrics)) });
     info!(
         "Serving metrics at http://{}{}",

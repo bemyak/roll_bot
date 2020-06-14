@@ -61,7 +61,6 @@ impl DndDatabase {
         inner.timestamp = Instant::now();
         inner.db.drop_collection(collection, false)?;
         let coll = inner.db.collection(collection)?;
-        coll.index("name").string(false).set()?;
         arr.iter()
             .filter_map(|elem| elem.as_document())
             .for_each(|elem| {
@@ -70,6 +69,7 @@ impl DndDatabase {
                     error!("Failed to save document: {}", e)
                 }
             });
+        coll.index("name").string(false).set()?;
 
         COLLECTION_TIMESTAMP_GAUGE
             .with_label_values(&[collection])
@@ -270,6 +270,6 @@ mod test {
     }
 
     fn get_db_path() -> &'static str {
-        "./test_data/roll_bot.db"
+        "./test_data/roll_bot.ejdb"
     }
 }

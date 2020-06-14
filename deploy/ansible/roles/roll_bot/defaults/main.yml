@@ -1,0 +1,5 @@
+---
+
+rollbot_user: rollbot
+rollbot_install_dir: /opt/roll_bot
+rollbot_telegram_token: "{{ lookup('env','ROLL_BOT_TOKEN') }}"
