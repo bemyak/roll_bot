@@ -1,13 +1,28 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::Display;
 use std::fmt::Write;
+use std::str::FromStr;
 
 use ejdb::bson;
+use rand::prelude::*;
+use regex::Regex;
 use telegram_bot::MessageChat;
 
 use crate::db::LogMessage;
 use crate::get_unix_time;
 use crate::PROJECT_URL;
+
+#[derive(Debug)]
+pub struct FormatError(String);
+
+impl Display for FormatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Error for FormatError {}
 
 pub fn format_document(doc: bson::Document) -> String {
     let mut res = String::new();
@@ -150,17 +165,137 @@ pub fn format_collection_metadata(meta: ejdb::meta::DatabaseMetadata) -> String 
         .join("\n")
 }
 
+pub fn roll_dice(msg: &str) -> Result<String, Box<dyn Error>> {
+    lazy_static! {
+        static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+)\s*)?(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?").unwrap();
+    }
+
+    enum MODE {
+        ADV,
+        DADV,
+        NORMAL,
+    }
+
+    let mut response = String::new();
+
+    let iter = DICE_REGEX.captures_iter(msg);
+
+    if iter.size_hint().0 > 100 {
+        return Ok("I don't have so many dices!".to_owned());
+    }
+
+    for cap in iter {
+        if msg != ""
+            && cap
+                .name("num")
+                .or(cap.name("face"))
+                .or(cap.name("bonus_sign"))
+                .or(cap.name("bonus_value"))
+                == None
+        {
+            continue;
+        }
+
+        let num = cap.name("num").map_or("1", |m| m.as_str());
+        let face: i32 = cap
+            .name("face")
+            .map(|m| FromStr::from_str(m.as_str()).ok())
+            .flatten()
+            .unwrap_or(20);
+        let bonus_sign = cap.name("bonus_sign").map(|m| m.as_str());
+        let bonus_value: Option<i32> = cap
+            .name("bonus_value")
+            .map(|m| FromStr::from_str(m.as_str()).ok())
+            .flatten();
+
+        let (mode, capacity) = match num {
+            "+" => (MODE::ADV, 2),
+            "-" => (MODE::DADV, 2),
+            _ => (
+                MODE::NORMAL,
+                FromStr::from_str(num)
+                    .map_err(|err| FormatError(format!("Cannot parse roll expression: {}", err)))?,
+            ),
+        };
+
+        if capacity > 100 {
+            return Ok("I don't have so many dices!".to_owned());
+        }
+
+        let roll_results: Vec<i32> = (0..capacity)
+            .map(|_| rand::thread_rng().gen_range(0, face) + 1)
+            .collect();
+
+        let mut total: i32 = match mode {
+            MODE::ADV => *roll_results.iter().max().unwrap_or(&0),
+            MODE::DADV => *roll_results.iter().min().unwrap_or(&0),
+            MODE::NORMAL => roll_results.iter().sum(),
+        };
+
+        if response.len() > 0 {
+            response.push_str("\n");
+        }
+        let die = match mode {
+            MODE::ADV => format!("`d{} with advantage:`\t\\[", face),
+            MODE::DADV => format!("`d{} with disadvantage:`\t\\[", face),
+            MODE::NORMAL => format!("`{}d{}:`\t\\[", num, face),
+        };
+        response.push_str(&die);
+        response.push_str(
+            &roll_results
+                .iter()
+                .map(|i| {
+                    if *i == face || *i == 1 {
+                        format!("*{}*", i.to_string())
+                    } else {
+                        i.to_string()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join(", "),
+        );
+        response.push_str("]");
+
+        if let (Some(bonus_sign), Some(bonus_value)) = (bonus_sign, bonus_value) {
+            response.push_str(&format!(" {} {}", bonus_sign, bonus_value));
+            match bonus_sign {
+                "+" => total += bonus_value,
+                "-" => total -= bonus_value,
+                "*" => total *= bonus_value,
+                "/" => total /= bonus_value,
+                other => {
+                    let err: Box<dyn Error> = Box::new(FormatError(format!(
+                        "Cannot parse roll expression: unknown symbol {}",
+                        other
+                    )));
+                    error!("{} in message: {}", err, msg);
+                    return Err(err);
+                }
+            }
+        }
+
+        response.push_str(&format!(" = *{}*", total));
+    }
+
+    if response.len() == 0 {
+        warn!("Cannot parse: {}", msg);
+        Ok("Err, sorry, I can't roll that. Maybe you need some /help ?".to_owned())
+    } else {
+        Ok(response)
+    }
+}
+
 pub fn help_message() -> String {
     format!("Hi! I'm a bot. The Dungeon Bot!
 I can help you with your Dungeons&Dragons game (5th edition). I can:
 
-/roll - roll a die. By default I have d20, but you can give me any number of dices! ex.: `/roll 2d6 +5`
+/roll (or /r) - roll a die. By default I have d20, but you can give me any number of dices! ex.: `/roll 2d6 +5`
 
-/mm - search for a monster. I'll look in every book in Candlekeep and find at least one. ex.: `/mm tarasque`
+/monster (or /m) - search for a monster. I'll look in every book in Candlekeep and find at least one. ex.: `/mm tarasque`
 
-/spell - search for a spell. I'll ask Elminster personally about it. ex.: `/spell fireball`
+/spell (or /s) - search for a spell. I'll ask Elminster personally about it. ex.: `/spell fireball`
 
-/item - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
+/item (or /i) - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
 
 My code is open like your brain to a Mind Flayer!
 You can get it [here]({}) (code, not brain)

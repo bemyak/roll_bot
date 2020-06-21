@@ -8,7 +8,7 @@ rls
 .devcontainer
 
 # Terraform state
-.terraform/
+.terraform
 *tfstate*
 
 # Prodution database

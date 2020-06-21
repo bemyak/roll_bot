@@ -7,8 +7,6 @@ use futures::StreamExt;
 use hyper::Client;
 use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_rustls::HttpsConnector;
-use rand::prelude::*;
-use regex::Regex;
 use telegram_bot::{
     connector::{default_connector, hyper::HyperConnector, Connector},
     prelude::*,
@@ -19,10 +17,6 @@ use crate::db::DndDatabase;
 use crate::format::*;
 use crate::PROJECT_URL;
 use crate::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
-
-lazy_static! {
-    static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\d+)?(d|к|д)(?P<face>\d+)").unwrap();
-}
 
 pub struct Bot {
     db: DndDatabase,
@@ -90,8 +84,8 @@ impl Bot {
                             let cmd_result = match cmd {
                                 // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
                                 // The returned string value is used to log request-response pair into the database
-                                "/help" => self.help(message.clone(), arg).await,
-                                "/roll" => self.roll(message.clone(), arg).await,
+                                "/help" | "/h" => self.help(message.clone(), arg).await,
+                                "/roll" | "/r" => self.roll(message.clone(), arg).await,
                                 "/stats" => self.stats(message.clone()).await,
                                 _ => self.unknown(message.clone(), cmd).await,
                             };
@@ -195,11 +189,17 @@ impl Bot {
         Ok(None)
     }
 
-    async fn roll(&self, message: Message, _arg: &str) -> Result<Option<String>, Box<dyn Error>> {
-        let msg = format!("{}", rand::thread_rng().gen_range(0, 20) + 1);
-
-        self.api.send(message.chat.text(msg.clone())).await?;
-        Ok(Some(msg))
+    async fn roll(&self, message: Message, arg: &str) -> Result<Option<String>, Box<dyn Error>> {
+        let response = roll_dice(arg)?;
+        self.api
+            .send(
+                message
+                    .chat
+                    .text(response.clone())
+                    .parse_mode(ParseMode::Markdown),
+            )
+            .await?;
+        Ok(Some(response))
     }
 
     async fn stats(&self, message: Message) -> Result<Option<String>, Box<dyn Error>> {

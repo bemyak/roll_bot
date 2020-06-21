@@ -1,5 +1,5 @@
 # DungeonBot
-Build status: [![build status](https://gitlab.com/bemyak/roll_bot/badges/master/build.svg)](https://gitlab.com/bemyak/roll-bot/commits/master)
+Build status: [![build status](https://gitlab.com/bemyak/roll_bot/badges/master/pipeline.svg)](https://gitlab.com/bemyak/roll-bot/commits/master)
 
 Telegram Bot for D&D 5e players.
 

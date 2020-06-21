@@ -1,6 +1,7 @@
 [package]
 authors = [ "Sergei Gureev <bemyak@pm.me>" ]
 edition = "2018"
+include = [ "src/**/*", "LICENSE", "README.md" ]
 name    = "roll_bot"
 version = "0.1.0"
 
