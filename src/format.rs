@@ -289,9 +289,9 @@ pub fn help_message() -> String {
     format!("Hi! I'm a bot. The Dungeon Bot!
 I can help you with your Dungeons&Dragons game (5th edition). I can:
 
-/roll (or /r) - roll a die. By default I have d20, but you can give me any number of dices! ex.: `/roll 2d6 +5`
+/roll (or /r) - roll a die. By default I'll use d20, but you can give me any number of dices! ex.: `/roll 2d6 +5`
 
-/monster (or /m) - search for a monster. I'll look in every book in Candlekeep and find at least one. ex.: `/mm tarasque`
+/monster (or /m) - search for a monster. I'll look in every book in Candlekeep and find at least one. ex.: `/monster tarasque`
 
 /spell (or /s) - search for a spell. I'll ask Elminster personally about it. ex.: `/spell fireball`
 

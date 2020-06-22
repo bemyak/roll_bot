@@ -10,7 +10,9 @@ use hyper_rustls::HttpsConnector;
 use telegram_bot::{
     connector::{default_connector, hyper::HyperConnector, Connector},
     prelude::*,
-    Api, Message, MessageEntityKind, MessageKind, ParseMode, UpdateKind,
+    reply_markup,
+    types::reply_markup::*,
+    Api, GetMe, Message, MessageEntityKind, MessageKind, ParseMode, UpdateKind, User,
 };
 
 use crate::db::DndDatabase;
@@ -18,15 +20,25 @@ use crate::format::*;
 use crate::PROJECT_URL;
 use crate::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 
+lazy_static! {
+    static ref INITIAL_MARKUP: ReplyKeyboardMarkup = reply_markup!(
+        reply_keyboard,
+        resize,
+        ["/roll", "/monster"],
+        ["/spell", "/item"]
+    );
+}
+
 pub struct Bot {
     db: DndDatabase,
     api: Api,
     cache: HashMap<String, Vec<String>>,
     cache_timestamp: Instant,
+    me: User,
 }
 
 impl Bot {
-    pub fn new(db: DndDatabase) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(db: DndDatabase) -> Result<Self, Box<dyn Error>> {
         let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
             error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
             std::process::exit(1)
@@ -35,12 +47,15 @@ impl Bot {
         let cache = db.get_cache();
 
         let connector = get_connector()?;
+        let api = Api::with_connector(token, connector);
+        let me = api.send(GetMe).await?;
 
         Ok(Self {
             db,
-            api: Api::with_connector(token, connector),
+            api,
             cache,
             cache_timestamp: Instant::now(),
+            me,
         })
     }
 
@@ -48,21 +63,41 @@ impl Bot {
         info!("Starting roll_bot...");
         let mut stream = self.api.stream();
 
-        while let Some(update) = stream.next().await {
-            let update = update?;
+        while let Some(Ok(update)) = stream.next().await {
             trace!("Received message: {:#?}", update);
-            // TODO: Make it work with UpdateKind::EditedMessage as well
-            if let UpdateKind::Message(message) = update.kind {
-                self.process_message(message).await?;
+
+            let result = match &update.kind {
+                UpdateKind::Message(msg) => self.process_message(msg).await,
+                UpdateKind::EditedMessage(_) => Ok(()),
+                UpdateKind::ChannelPost(_) => Ok(()),
+                UpdateKind::EditedChannelPost(_) => Ok(()),
+                UpdateKind::InlineQuery(_) => Ok(()),
+                UpdateKind::CallbackQuery(_) => Ok(()),
+                UpdateKind::Error(_) => Ok(()),
+                UpdateKind::Unknown => Ok(()),
+            };
+
+            if let Err(err) = result {
+                error!(
+                    "Error occurred while processing message: {:?}, {}",
+                    update, err
+                );
             }
         }
 
         Ok(())
     }
 
-    async fn process_message(&self, message: Message) -> Result<(), Box<dyn Error>> {
+    async fn process_message(&self, message: &Message) -> Result<(), Box<dyn Error>> {
+        // We don't want to speak to other bots
+        if message.from.is_bot {
+            info!("Message from bot received: {:?}", message.kind);
+            self.help(&message, "").await?;
+            return Ok(());
+        }
+
         let start_processing = Instant::now();
-        match message.clone().kind {
+        match &message.kind {
             MessageKind::Text { data, entities } => {
                 let mut entities_iter = entities.into_iter().peekable();
 
@@ -71,7 +106,23 @@ impl Bot {
                         MessageEntityKind::BotCommand => {
                             let cmd_start = entity.offset as usize;
                             let cmd_end = (entity.offset + entity.length) as usize;
-                            let cmd = &data[cmd_start..cmd_end];
+
+                            // In group chats command might be provided in /command@bot_name format
+                            // So, we need to check if it is us who were asked
+                            let mut name_start = cmd_end;
+                            if let Some(i) = data.find('@') {
+                                if i + 1 < name_start {
+                                    let bot_name = data[i + 1..name_start].to_owned();
+                                    if Some(bot_name) == self.me.username {
+                                        name_start = i
+                                    } else {
+                                        trace!("Not me!");
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            let cmd = &data[cmd_start..name_start];
 
                             let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
 
@@ -84,10 +135,12 @@ impl Bot {
                             let cmd_result = match cmd {
                                 // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
                                 // The returned string value is used to log request-response pair into the database
-                                "/help" | "/h" => self.help(message.clone(), arg).await,
-                                "/roll" | "/r" => self.roll(message.clone(), arg).await,
-                                "/stats" => self.stats(message.clone()).await,
-                                _ => self.unknown(message.clone(), cmd).await,
+                                "/help" | "/h" | "/about" | "/start" => {
+                                    self.help(&message, arg).await
+                                }
+                                "/roll" | "/r" => self.roll(&message, arg).await,
+                                "/stats" => self.stats(&message).await,
+                                _ => self.unknown(&message, cmd).await,
                             };
 
                             timer.observe_duration();
@@ -146,10 +199,10 @@ impl Bot {
     ) -> Result<Option<String>, Box<dyn Error>> {
         let url = format!("{}/-/issues/new?issue[title]=Error while processing command {}&issue[description]={}\n{}", PROJECT_URL, cmd, data, err);
         let msg = format!(
-            "Ooops! An error occurred :(\nPlease, [submit a bug report]({})",
+            "Oops! An error occurred :(\nPlease, [submit a bug report]({})",
             url
         );
-        // TODO: Send email automatically to Gitlab Service Desk
+        // TODO: Send email automatically to GitLab Service Desk
         self.api
             .send(
                 message
@@ -162,19 +215,28 @@ impl Bot {
         Ok(None)
     }
 
-    async fn unknown(&self, message: Message, cmd: &str) -> Result<Option<String>, Box<dyn Error>> {
+    async fn unknown(
+        &self,
+        message: &Message,
+        cmd: &str,
+    ) -> Result<Option<String>, Box<dyn Error>> {
         self.api
             .send(
                 message
                     .chat
-                    .text(format!("Errr, I don't know `{}` command yet.", cmd))
+                    .text(format!("Err, I don't know `{}` command yet.", cmd))
                     .parse_mode(ParseMode::Markdown),
             )
             .await?;
         Ok(None)
     }
 
-    async fn help(&self, message: Message, _arg: &str) -> Result<Option<String>, Box<dyn Error>> {
+    async fn help(&self, message: &Message, _arg: &str) -> Result<Option<String>, Box<dyn Error>> {
+        lazy_static! {
+            static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
+                ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://paypal.me/bemyak", "Chat with me" url "https://t.me/@bemyak"]
+            );
+        }
         let help = help_message();
 
         self.api
@@ -183,13 +245,15 @@ impl Bot {
                     .chat
                     .text(help)
                     .parse_mode(ParseMode::Markdown)
-                    .disable_preview(),
+                    .disable_preview()
+                    .reply_markup(HELP_MARKUP.clone()),
             )
             .await?;
+
         Ok(None)
     }
 
-    async fn roll(&self, message: Message, arg: &str) -> Result<Option<String>, Box<dyn Error>> {
+    async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, Box<dyn Error>> {
         let response = roll_dice(arg)?;
         self.api
             .send(
@@ -202,7 +266,7 @@ impl Bot {
         Ok(Some(response))
     }
 
-    async fn stats(&self, message: Message) -> Result<Option<String>, Box<dyn Error>> {
+    async fn stats(&self, message: &Message) -> Result<Option<String>, Box<dyn Error>> {
         let last_update = Instant::now()
             .checked_duration_since(self.db.get_update_timestamp())
             .unwrap()

@@ -38,7 +38,7 @@ lazy_static! {
     };
     pub static ref REQUEST_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "request_duration_seconds",
-        "Request duration histogrram",
+        "Request duration histogram",
         &["command"]
     )
     .unwrap();
@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         fetch_job(fetch_db).await;
     });
 
-    let bot = telegram::Bot::new(db.clone())?;
+    let bot = telegram::Bot::new(db.clone()).await?;
 
     bot.start().await?;
 
