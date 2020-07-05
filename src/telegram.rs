@@ -14,6 +14,7 @@ use telegram_bot::{
     types::reply_markup::*,
     Api, GetMe, Message, MessageEntityKind, MessageKind, ParseMode, UpdateKind, User,
 };
+use thiserror::Error;
 
 use crate::db::DndDatabase;
 use crate::format::*;
@@ -29,6 +30,18 @@ lazy_static! {
     );
 }
 
+#[derive(Error, Debug)]
+pub enum BotError {
+    #[error("Telegram Error")]
+    TelegramError(#[from] telegram_bot::Error),
+
+    #[error("Database Error")]
+    DbError(#[from] ejdb::Error),
+
+    #[error("Format Error")]
+    FormatError(#[from] FormatError),
+}
+
 pub struct Bot {
     db: DndDatabase,
     api: Api,
@@ -38,7 +51,7 @@ pub struct Bot {
 }
 
 impl Bot {
-    pub async fn new(db: DndDatabase) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(db: DndDatabase) -> Result<Self, BotError> {
         let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
             error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
             std::process::exit(1)
@@ -46,7 +59,7 @@ impl Bot {
 
         let cache = db.get_cache();
 
-        let connector = get_connector()?;
+        let connector = get_connector();
         let api = Api::with_connector(token, connector);
         let me = api.send(GetMe).await?;
 
@@ -59,8 +72,8 @@ impl Bot {
         })
     }
 
-    pub async fn start(self) -> Result<(), Box<dyn Error>> {
-        info!("Starting roll_bot...");
+    pub async fn start(self) {
+        info!("Started successfully");
         let mut stream = self.api.stream();
 
         while let Some(Ok(update)) = stream.next().await {
@@ -84,11 +97,9 @@ impl Bot {
                 );
             }
         }
-
-        Ok(())
     }
 
-    async fn process_message(&self, message: &Message) -> Result<(), Box<dyn Error>> {
+    async fn process_message(&self, message: &Message) -> Result<(), BotError> {
         // We don't want to speak to other bots
         if message.from.is_bot {
             info!("Message from bot received: {:?}", message.kind);
@@ -157,6 +168,8 @@ impl Bot {
                                 ])
                                 .inc();
 
+                            let cmd_result = cmd_result.map_err(|err| err.into());
+
                             self.db.log_message(
                                 user_id,
                                 chat_type,
@@ -196,7 +209,7 @@ impl Bot {
         cmd: String,
         data: String,
         err: Box<dyn Error>,
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    ) -> Result<Option<String>, telegram_bot::Error> {
         let url = format!("{}/-/issues/new?issue[title]=Error while processing command {}&issue[description]={}\n{}", PROJECT_URL, cmd, data, err);
         let msg = format!(
             "Oops! An error occurred :(\nPlease, [submit a bug report]({})",
@@ -215,11 +228,7 @@ impl Bot {
         Ok(None)
     }
 
-    async fn unknown(
-        &self,
-        message: &Message,
-        cmd: &str,
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    async fn unknown(&self, message: &Message, cmd: &str) -> Result<Option<String>, BotError> {
         self.api
             .send(
                 message
@@ -231,7 +240,7 @@ impl Bot {
         Ok(None)
     }
 
-    async fn help(&self, message: &Message, _arg: &str) -> Result<Option<String>, Box<dyn Error>> {
+    async fn help(&self, message: &Message, _arg: &str) -> Result<Option<String>, BotError> {
         lazy_static! {
             static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
                 ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://paypal.me/bemyak", "Chat with me" url "https://t.me/@bemyak"]
@@ -253,7 +262,7 @@ impl Bot {
         Ok(None)
     }
 
-    async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, Box<dyn Error>> {
+    async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
         let response = roll_dice(arg)?;
         self.api
             .send(
@@ -266,7 +275,7 @@ impl Bot {
         Ok(Some(response))
     }
 
-    async fn stats(&self, message: &Message) -> Result<Option<String>, Box<dyn Error>> {
+    async fn stats(&self, message: &Message) -> Result<Option<String>, BotError> {
         let last_update = Instant::now()
             .checked_duration_since(self.db.get_update_timestamp())
             .unwrap()
@@ -303,24 +312,22 @@ impl Bot {
     }
 }
 
-pub fn get_connector() -> Result<Box<dyn Connector>, Box<dyn Error>> {
-    let proxy_url = env::var("roll_bot_http_proxy")
+pub fn get_connector() -> Box<dyn Connector> {
+    env::var("roll_bot_http_proxy")
         .or(env::var("ROLL_BOT_HTTP_PROXY"))
         .or(env::var("http_proxy"))
         .or(env::var("HTTP_PROXY"))
         .or(env::var("https_proxy"))
-        .or(env::var("HTTPS_PROXY"));
-
-    match proxy_url {
-        Ok(proxy_url) => {
+        .or(env::var("HTTPS_PROXY"))
+        .map_err(|err| Into::<Box<dyn Error>>::into(err))
+        .and_then(|proxy_url| {
             info!("Running with proxy: {}", proxy_url);
             let connector = HttpsConnector::new();
             let proxy = Proxy::new(Intercept::All, proxy_url.parse()?);
             let connector = ProxyConnector::from_proxy(connector, proxy)?;
-            Ok(Box::new(HyperConnector::new(
-                Client::builder().build(connector),
-            )))
-        }
-        Err(_) => Ok(default_connector()),
-    }
+            let connector: Box<dyn Connector> =
+                Box::new(HyperConnector::new(Client::builder().build(connector)));
+            Ok(connector)
+        })
+        .unwrap_or(default_connector())
 }

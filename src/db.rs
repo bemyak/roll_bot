@@ -33,7 +33,7 @@ impl Clone for DndDatabase {
 }
 
 impl DndDatabase {
-    pub fn new(path: &str) -> Result<DndDatabase, Box<dyn Error>> {
+    pub fn new(path: &str) -> Result<DndDatabase, ejdb::Error> {
         let ejdb = Database::open(path)?;
         // Create log index
         {
@@ -52,7 +52,7 @@ impl DndDatabase {
         &mut self,
         json: Vec<JsonValue>,
         collection: &str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), ejdb::Error> {
         let bs: Bson = serde_json::Value::Array(json).into();
         let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(
             format!("{} field is not an array", collection).to_owned(),
@@ -87,13 +87,13 @@ impl DndDatabase {
         inner.timestamp
     }
 
-    pub fn get_metadata(&self) -> Result<ejdb::meta::DatabaseMetadata, Box<dyn Error>> {
+    pub fn get_metadata(&self) -> Result<ejdb::meta::DatabaseMetadata, ejdb::Error> {
         let inner = self.0.try_lock().unwrap();
         Ok(inner.db.get_metadata()?)
     }
 
     // This is terribly inefficient, but upstream EJDB bindings does not implement distinct queries :(
-    pub fn get_all_massages(&self) -> Result<Vec<LogMessage>, Box<dyn Error>> {
+    pub fn get_all_massages(&self) -> Result<Vec<LogMessage>, ejdb::Error> {
         let inner = self.0.try_lock().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
         Ok(coll
@@ -125,7 +125,7 @@ impl DndDatabase {
             .collect::<Vec<_>>()
     }
 
-    fn list_items(db: &Database, collection: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn list_items(db: &Database, collection: &str) -> Result<Vec<String>, ejdb::Error> {
         let coll = db.collection(collection)?;
         let res = coll
             .query(Q.empty(), QH.field("name").include())
@@ -143,14 +143,12 @@ impl DndDatabase {
         &self,
         collection: &str,
         item_name: &str,
-    ) -> Result<bson::Document, Box<dyn Error>> {
+    ) -> Result<Option<bson::Document>, ejdb::Error> {
         let inner = self.0.try_lock().unwrap();
         let coll = inner.db.collection(collection)?;
-        coll.query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
-            .find_one()?
-            .ok_or(Box::new(bson::DecoderError::Unknown(
-                "Not found".to_owned(),
-            )))
+        Ok(coll
+            .query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
+            .find_one()?)
     }
 
     pub fn log_message(
@@ -174,7 +172,7 @@ impl DndDatabase {
         request: String,
         response: &Result<Option<String>, Box<dyn Error>>,
         latency: u64,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), ejdb::Error> {
         let inner = self.0.try_lock().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
 
@@ -264,7 +262,7 @@ mod test {
     fn test_get_item() {
         init();
         let db = DndDatabase::new(get_db_path()).unwrap();
-        let i = db.get_item("spell", "Fireball").unwrap();
+        let i = db.get_item("spell", "Fireball").unwrap().unwrap();
         info!("{:#?}", i);
         info!("{}", format_document(i));
     }

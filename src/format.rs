@@ -79,7 +79,7 @@ pub fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
     }
 }
 
-pub fn format_message_stats(msgs: Vec<LogMessage>) -> Result<String, Box<dyn Error>> {
+pub fn format_message_stats(msgs: Vec<LogMessage>) -> Result<String, ejdb::Error> {
     let now = get_unix_time();
     let mount_ago = now - 60 * 60 * 24 * 30;
 
@@ -165,7 +165,7 @@ pub fn format_collection_metadata(meta: ejdb::meta::DatabaseMetadata) -> String 
         .join("\n")
 }
 
-pub fn roll_dice(msg: &str) -> Result<String, Box<dyn Error>> {
+pub fn roll_dice(msg: &str) -> Result<String, FormatError> {
     lazy_static! {
         static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+)\s*)?(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?").unwrap();
     }
@@ -264,10 +264,10 @@ pub fn roll_dice(msg: &str) -> Result<String, Box<dyn Error>> {
                 "*" => total *= bonus_value,
                 "/" => total /= bonus_value,
                 other => {
-                    let err: Box<dyn Error> = Box::new(FormatError(format!(
+                    let err = FormatError(format!(
                         "Cannot parse roll expression: unknown symbol {}",
                         other
-                    )));
+                    ));
                     error!("{} in message: {}", err, msg);
                     return Err(err);
                 }

@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let bot = telegram::Bot::new(db.clone()).await?;
 
-    bot.start().await?;
+    bot.start().await;
 
     Ok(())
 }
