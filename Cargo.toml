@@ -10,19 +10,20 @@ lto   = true
 panic = 'abort'
 
 [dependencies]
-ejdb         = "0.4"
-futures      = { version = "0.3", default-features = false }
-hyper        = { version = "0.13", default-features = false }
-hyper-proxy  = { version = "0.7", default-features = false, features = ["rustls"] }
-hyper-rustls = "0.20"
-lazy_static  = "1.4"
-log          = { version = "0.4", default-features = false }
-prometheus   = { version = "0.9", default-features = false, features = ["process"] }
-rand         = { version = "0.7", default-features = false }
-regex        = { version = "1", default-features = false }
-reqwest      = { version = "0.10", default-features = false, features = ["json", "rustls-tls"] }
-serde_json   = { version = "1.0", default-features = false }
-simplelog    = { version = "0.8", default-features = false, features = ["test"] }
-telegram-bot = { version = "0.7", default-features = false, features = ["rustls"] }
-thiserror    = "1.0"
-tokio        = { version = "0.2", default-features = false, features = ["rt-threaded", "macros"] }
+ejdb             = "0.4"
+futures          = { version = "0.3", default-features = false }
+hyper            = { version = "0.13", default-features = false }
+hyper-proxy      = { version = "0.7", default-features = false, features = ["rustls"] }
+hyper-rustls     = "0.20"
+lazy_static      = "1.4"
+log              = { version = "0.4", default-features = false }
+percent-encoding = "2.1"
+prometheus       = { version = "0.9", default-features = false, features = ["process"] }
+rand             = { version = "0.7", default-features = false }
+regex            = { version = "1", default-features = false }
+reqwest          = { version = "0.10", default-features = false, features = ["json", "rustls-tls"] }
+serde_json       = { version = "1.0", default-features = false }
+simplelog        = { version = "0.8", default-features = false, features = ["test"] }
+telegram-bot     = { version = "0.7", default-features = false, features = ["rustls"] }
+thiserror        = "1.0"
+tokio            = { version = "0.2", default-features = false, features = ["rt-threaded", "macros"] }

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::time::Instant;
@@ -12,7 +11,8 @@ use telegram_bot::{
     prelude::*,
     reply_markup,
     types::reply_markup::*,
-    Api, GetMe, Message, MessageEntityKind, MessageKind, ParseMode, UpdateKind, User,
+    Api, GetMe, Message, MessageEntity, MessageEntityKind, MessageKind, ParseMode, UpdateKind,
+    User,
 };
 use thiserror::Error;
 
@@ -45,8 +45,6 @@ pub enum BotError {
 pub struct Bot {
     db: DndDatabase,
     api: Api,
-    cache: HashMap<String, Vec<String>>,
-    cache_timestamp: Instant,
     me: User,
 }
 
@@ -57,19 +55,11 @@ impl Bot {
             std::process::exit(1)
         });
 
-        let cache = db.get_cache();
-
         let connector = get_connector();
         let api = Api::with_connector(token, connector);
         let me = api.send(GetMe).await?;
 
-        Ok(Self {
-            db,
-            api,
-            cache,
-            cache_timestamp: Instant::now(),
-            me,
-        })
+        Ok(Self { db, api, me })
     }
 
     pub async fn start(self) {
@@ -115,43 +105,27 @@ impl Bot {
                 while let Some(entity) = entities_iter.next() {
                     match entity.kind {
                         MessageEntityKind::BotCommand => {
-                            let cmd_start = entity.offset as usize;
-                            let cmd_end = (entity.offset + entity.length) as usize;
+                            let (cmd, arg) =
+                                self.parse_command(data, &entity, entities_iter.peek());
 
-                            // In group chats command might be provided in /command@bot_name format
-                            // So, we need to check if it is us who were asked
-                            let mut name_start = cmd_end;
-                            if let Some(i) = data.find('@') {
-                                if i + 1 < name_start {
-                                    let bot_name = data[i + 1..name_start].to_owned();
-                                    if Some(bot_name) == self.me.username {
-                                        name_start = i
-                                    } else {
-                                        trace!("Not me!");
-                                        continue;
-                                    }
-                                }
-                            }
+                            let timer = REQUEST_HISTOGRAM
+                                .with_label_values(&[cmd.as_ref()])
+                                .start_timer();
 
-                            let cmd = &data[cmd_start..name_start];
-
-                            let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
-
-                            let arg_start = cmd_end;
-                            let arg_end = entities_iter
-                                .peek()
-                                .map_or(data.len(), |next_entity| next_entity.offset as usize);
-                            let arg = &data[arg_start..arg_end].trim();
-
-                            let cmd_result = match cmd {
+                            let cmd_result = match cmd.as_ref() {
                                 // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
                                 // The returned string value is used to log request-response pair into the database
                                 "/help" | "/h" | "/about" | "/start" => {
-                                    self.help(&message, arg).await
+                                    self.help(&message, &arg).await
                                 }
-                                "/roll" | "/r" => self.roll(&message, arg).await,
+                                "/roll" | "/r" => self.roll(&message, &arg).await,
                                 "/stats" => self.stats(&message).await,
-                                _ => self.unknown(&message, cmd).await,
+                                "/item" | "/i" => self.search_item("item", &message, &arg).await,
+                                "/monster" | "/m" => {
+                                    self.search_item("monster", &message, &arg).await
+                                }
+                                "/spell" | "/s" => self.search_item("spell", &message, &arg).await,
+                                _ => self.unknown(&message, &cmd).await,
                             };
 
                             timer.observe_duration();
@@ -164,7 +138,7 @@ impl Bot {
                                 .with_label_values(&[
                                     format!("{}", user_id).as_str(),
                                     chat_type_to_string(&message.chat),
-                                    cmd,
+                                    cmd.as_ref(),
                                 ])
                                 .inc();
 
@@ -182,7 +156,7 @@ impl Bot {
                             );
 
                             if let Err(err) = cmd_result {
-                                ERROR_COUNTER.with_label_values(&[cmd]).inc();
+                                ERROR_COUNTER.with_label_values(&[cmd.as_ref()]).inc();
                                 error!("Error while processing message {}: {}", data, err);
                                 self.report_error(
                                     message.clone(),
@@ -298,8 +272,6 @@ impl Bot {
             update_str,
         );
 
-        info!("{}", msg);
-
         self.api
             .send(
                 message
@@ -309,6 +281,74 @@ impl Bot {
             )
             .await?;
         Ok(Some(msg))
+    }
+
+    async fn search_item(
+        &self,
+        collection: &str,
+        message: &Message,
+        arg: &str,
+    ) -> Result<Option<String>, BotError> {
+        match self.db.get_item(collection, arg)? {
+            Some(item) => {
+                let msg = format_document(item);
+                self.api
+                    .send(
+                        message
+                            .chat
+                            .text(msg.clone())
+                            .parse_mode(ParseMode::Markdown),
+                    )
+                    .await?;
+                Ok(Some(msg))
+            }
+            None => {
+                //TODO: #11 Fuzzy items search
+                Ok(None)
+            }
+        }
+    }
+
+    fn parse_command(
+        &self,
+        data: &String,
+        entity: &MessageEntity,
+        next_entity: Option<&&MessageEntity>,
+    ) -> (String, String) {
+        let cmd_start = entity.offset as usize;
+        let cmd_end = (entity.offset + entity.length) as usize;
+
+        // In group chats command might be provided in /command@bot_name format
+        // So, we need to check if it is us who were asked
+        let mut name_start = cmd_end;
+        if let Some(i) = data.rfind('@') {
+            if i + 1 < name_start {
+                let bot_name = data[i + 1..name_start].to_owned();
+                if Some(bot_name) == self.me.username {
+                    name_start = i
+                }
+            }
+        }
+
+        let cmd = &data[cmd_start..name_start];
+
+        let arg_start = cmd_end;
+        let arg_end = next_entity.map_or(data.len(), |next_entity| next_entity.offset as usize);
+        let arg = data[arg_start..arg_end].trim();
+
+        // If there is no args, it could be that they are specified as part of the command
+        // e.g.: /roll_2d8@bot_name
+        if arg.is_empty() {
+            let decoded_cmd = tg_decode(cmd);
+            trace!("{}", decoded_cmd);
+            let mut iter = decoded_cmd.split("_");
+            (
+                iter.next().unwrap_or(cmd).to_owned(),
+                iter.collect::<Vec<&str>>().join(" "),
+            )
+        } else {
+            (cmd.to_owned(), arg.to_owned())
+        }
     }
 }
 

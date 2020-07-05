@@ -5,6 +5,7 @@ use std::fmt::Write;
 use std::str::FromStr;
 
 use ejdb::bson;
+use percent_encoding::{percent_decode, utf8_percent_encode, NON_ALPHANUMERIC};
 use rand::prelude::*;
 use regex::Regex;
 use telegram_bot::MessageChat;
@@ -289,15 +290,37 @@ pub fn help_message() -> String {
     format!("Hi! I'm a bot. The Dungeon Bot!
 I can help you with your Dungeons&Dragons game (5th edition). I can:
 
-/roll (or /r) - roll a die. By default I'll use d20, but you can give me any number of dices! ex.: `/roll 2d6 +5`
+/roll (or /r) - roll a die. By default I'll use d20, but you can give me any number of dices! e.g.: `/roll 2d6 +5`
 
-/monster (or /m) - search for a monster. I'll look in every book in Candlekeep and find at least one. ex.: `/monster tarasque`
+/monster (or /m) - search for a monster. I'll look in every book in Candlekeep and find at least one. e.g.: `/monster tarasque`
 
-/spell (or /s) - search for a spell. I'll ask Elminster personally about it. ex.: `/spell fireball`
+/spell (or /s) - search for a spell. I'll ask Elminster personally about it. e.g.: `/spell fireball`
 
-/item (or /i) - search for an item. I'll cast Legend Lore spell to know what it is. ex.: `/item bag of holding`
+/item (or /i) - search for an item. I'll cast Legend Lore spell to know what it is. e.g.: `/item bag of holding`
 
 My code is open like your brain to a Mind Flayer!
 You can get it [here]({}) (code, not brain)
 Suggestions and contributions are welcome.", PROJECT_URL)
+}
+
+// Telegram allows only alphanumeric characters and underscores in bot commands,
+// but we often have spaces, apostrophes and so on.
+// Here we are utilizing url encode to replace such symbols with %\d\d (e.g., %20),
+// but since % is itself forbidden character we are wrapping the resulting digit in underscores.
+pub fn tg_encode(msg: &str) -> String {
+    lazy_static! {
+        static ref CHAR_REGEX: Regex = Regex::new(r"%([\dA-F]{2})").unwrap();
+    }
+    let msg = utf8_percent_encode(msg, NON_ALPHANUMERIC).to_string();
+    CHAR_REGEX.replace_all(&msg, "_${1}_").into()
+}
+
+pub fn tg_decode(msg: &str) -> String {
+    lazy_static! {
+        static ref CHAR_REGEX: Regex = Regex::new(r"_([\dA-F]{2})_").unwrap();
+    }
+    let url_encoded = CHAR_REGEX.replace_all(&msg, "%${1}");
+    percent_decode(url_encoded.as_bytes())
+        .decode_utf8_lossy()
+        .to_string()
 }

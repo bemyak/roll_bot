@@ -1,5 +1,4 @@
 use std::clone::Clone;
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
@@ -103,17 +102,6 @@ impl DndDatabase {
             .map(|doc| doc.try_into())
             .filter_map(Result::ok)
             .collect())
-    }
-
-    pub fn get_cache(&self) -> HashMap<String, Vec<String>> {
-        let inner = self.0.try_lock().unwrap();
-        let collections = DndDatabase::list_collections(&inner.db);
-        let mut result = HashMap::with_capacity(collections.len());
-        collections.into_iter().for_each(|collection| {
-            let items = DndDatabase::list_items(&inner.db, &collection).unwrap_or_default();
-            result.insert(collection, items);
-        });
-        result
     }
 
     fn list_collections(db: &Database) -> Vec<String> {
@@ -240,15 +228,6 @@ mod test {
 
     fn init() {
         let _ = TestLogger::init(LevelFilter::Trace, Config::default());
-    }
-
-    #[test]
-    fn test_get_cache() {
-        init();
-        let db = DndDatabase::new(get_db_path()).unwrap();
-        let cache = db.get_cache();
-        info!("{:?}", cache);
-        assert!(cache.len() > 0);
     }
 
     #[test]
