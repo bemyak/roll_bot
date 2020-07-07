@@ -1,18 +1,21 @@
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::time::Instant;
+use std::sync::Mutex;
+use std::{convert::identity, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
 use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_rustls::HttpsConnector;
+use simsearch::SimSearch;
 use telegram_bot::{
     connector::{default_connector, hyper::HyperConnector, Connector},
     prelude::*,
     reply_markup,
     types::reply_markup::*,
-    Api, GetMe, Message, MessageEntity, MessageEntityKind, MessageKind, ParseMode, UpdateKind,
-    User,
+    Api, CallbackQuery, GetMe, Message, MessageEntity, MessageEntityKind, MessageKind, ParseMode,
+    UpdateKind, User,
 };
 use thiserror::Error;
 
@@ -46,6 +49,7 @@ pub struct Bot {
     db: DndDatabase,
     api: Api,
     me: User,
+    cache: Mutex<HashMap<String, SimSearch<String>>>,
 }
 
 impl Bot {
@@ -55,11 +59,12 @@ impl Bot {
             std::process::exit(1)
         });
 
+        let cache = Mutex::new(db.get_cache());
         let connector = get_connector();
         let api = Api::with_connector(token, connector);
         let me = api.send(GetMe).await?;
 
-        Ok(Self { db, api, me })
+        Ok(Self { db, api, me, cache })
     }
 
     pub async fn start(self) {
@@ -75,17 +80,38 @@ impl Bot {
                 UpdateKind::ChannelPost(_) => Ok(()),
                 UpdateKind::EditedChannelPost(_) => Ok(()),
                 UpdateKind::InlineQuery(_) => Ok(()),
-                UpdateKind::CallbackQuery(_) => Ok(()),
+                UpdateKind::CallbackQuery(msg) => self.process_callback_query(msg).await,
                 UpdateKind::Error(_) => Ok(()),
                 UpdateKind::Unknown => Ok(()),
             };
 
             if let Err(err) = result {
                 error!(
-                    "Error occurred while processing message: {:?}, {}",
+                    "Error occurred while processing message: {:?}, {:?}",
                     update, err
                 );
             }
+        }
+    }
+
+    async fn process_callback_query(&self, callback_query: &CallbackQuery) -> Result<(), BotError> {
+        let callback_query = callback_query.clone();
+        if let (Some(data), Some(msg)) = (callback_query.data, callback_query.message) {
+            let (cmd, arg) = if let Some(sep_i) = data.find(" ") {
+                if sep_i < data.len() - 1 {
+                    (&data[0..sep_i], &data[sep_i + 1..data.len()])
+                } else {
+                    (data.as_ref(), "")
+                }
+            } else {
+                (data.as_ref(), "")
+            };
+
+            trace!("Callback received: cmd=\"{}\", arg=\"{}\"", cmd, arg);
+
+            self.execute_command(cmd, arg, &msg).await.map(|_| ())
+        } else {
+            Ok(())
         }
     }
 
@@ -112,21 +138,7 @@ impl Bot {
                                 .with_label_values(&[cmd.as_ref()])
                                 .start_timer();
 
-                            let cmd_result = match cmd.as_ref() {
-                                // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
-                                // The returned string value is used to log request-response pair into the database
-                                "/help" | "/h" | "/about" | "/start" => {
-                                    self.help(&message, &arg).await
-                                }
-                                "/roll" | "/r" => self.roll(&message, &arg).await,
-                                "/stats" => self.stats(&message).await,
-                                "/item" | "/i" => self.search_item("item", &message, &arg).await,
-                                "/monster" | "/m" => {
-                                    self.search_item("monster", &message, &arg).await
-                                }
-                                "/spell" | "/s" => self.search_item("spell", &message, &arg).await,
-                                _ => self.unknown(&message, &cmd).await,
-                            };
+                            let cmd_result = self.execute_command(&cmd, &arg, &message).await;
 
                             timer.observe_duration();
 
@@ -157,7 +169,7 @@ impl Bot {
 
                             if let Err(err) = cmd_result {
                                 ERROR_COUNTER.with_label_values(&[cmd.as_ref()]).inc();
-                                error!("Error while processing message {}: {}", data, err);
+                                error!("Error while processing message {}: {:#?}", data, err);
                                 self.report_error(
                                     message.clone(),
                                     cmd.clone().to_owned(),
@@ -175,6 +187,28 @@ impl Bot {
         }
 
         Ok(())
+    }
+
+    async fn execute_command(
+        &self,
+        cmd: &str,
+        arg: &str,
+        message: &Message,
+    ) -> Result<Option<String>, BotError> {
+        match cmd.as_ref() {
+            // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
+            // The returned string value is used to log request-response pair into the database
+            "/help" | "/h" | "/about" | "/start" => self.help(message, arg).await,
+            "/roll" | "/r" => self.roll(message, arg).await,
+            "/stats" => self.stats(message).await,
+            "/item" | "/i" => {
+                self.search_item(vec!["item", "baseitem"], message, arg)
+                    .await
+            }
+            "/monster" | "/m" => self.search_item(vec!["monster"], message, arg).await,
+            "/spell" | "/s" => self.search_item(vec!["spell"], message, arg).await,
+            _ => self.unknown(message, cmd).await,
+        }
     }
 
     async fn report_error(
@@ -217,7 +251,7 @@ impl Bot {
     async fn help(&self, message: &Message, _arg: &str) -> Result<Option<String>, BotError> {
         lazy_static! {
             static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
-                ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://paypal.me/bemyak", "Chat with me" url "https://t.me/@bemyak"]
+                ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://paypal.me/bemyak", "Chat with author" url "https://t.me/bemyak"]
             );
         }
         let help = help_message();
@@ -285,11 +319,18 @@ impl Bot {
 
     async fn search_item(
         &self,
-        collection: &str,
+        collections: Vec<&str>,
         message: &Message,
         arg: &str,
     ) -> Result<Option<String>, BotError> {
-        match self.db.get_item(collection, arg)? {
+        let exact_match_result = collections
+            .iter()
+            .map(|collection| self.db.get_item(collection, arg))
+            .filter_map(Result::ok)
+            .filter_map(identity)
+            .next();
+
+        match exact_match_result {
             Some(item) => {
                 let msg = format_document(item);
                 self.api
@@ -303,8 +344,45 @@ impl Bot {
                 Ok(Some(msg))
             }
             None => {
-                //TODO: #11 Fuzzy items search
-                Ok(None)
+                let default_collection_name = collections.get(0).clone().unwrap_or(&"thing");
+
+                let mut keyboard = InlineKeyboardMarkup::new();
+                let mut found = false;
+
+                let map = self.cache.try_lock().unwrap();
+
+                for collection in collections.clone() {
+                    let engine = map.get(collection).unwrap();
+                    let results = engine.search(arg);
+
+                    let command_prefix = "/".to_owned() + default_collection_name + " ";
+
+                    results.iter().for_each(|item| {
+                        let command = command_prefix.clone() + item;
+                        let button = InlineKeyboardButton::callback(item.clone(), command);
+
+                        found = true;
+                        keyboard.add_row(vec![button]);
+                    });
+                }
+
+                let msg = if found {
+                    format!(
+                        "I don't have any {} with this exact name, but these looks similar:",
+                        default_collection_name
+                    )
+                } else {
+                    format!(
+                        "Can't find any {} with this name, sorry :(",
+                        default_collection_name
+                    )
+                };
+
+                self.api
+                    .send(message.chat.text(msg.clone()).reply_markup(keyboard))
+                    .await?;
+
+                Ok(Some(msg.to_owned()))
             }
         }
     }

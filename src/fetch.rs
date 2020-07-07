@@ -8,6 +8,7 @@ use serde_json::Value as JsonValue;
 const BASE_URL: &str = "https://5e.tools/data";
 const SPELLS: &str = "/spells";
 const ITEMS: &str = "/items";
+const ITEMS_BASE: &str = "/items-base";
 const BESTIARY: &str = "/bestiary";
 const INDEX: &str = "/index.json";
 const EXTENSION: &str = ".json";
@@ -28,10 +29,11 @@ impl Error for FetchError {}
 
 pub async fn fetch() -> Result<HashMap<&'static str, Vec<JsonValue>>, Box<dyn Error + Send + Sync>>
 {
-    let mut result = HashMap::new();
+    let mut result: HashMap<&'static str, Vec<JsonValue>> = HashMap::new();
 
     for (collection, url) in vec![
         ("item", BASE_URL.to_owned() + ITEMS),
+        ("baseitem", BASE_URL.to_owned() + ITEMS_BASE),
         ("monster", BASE_URL.to_owned() + BESTIARY),
         ("spell", BASE_URL.to_owned() + SPELLS),
     ] {

@@ -1,4 +1,5 @@
 use std::clone::Clone;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
@@ -12,6 +13,7 @@ use ejdb::query::{Q, QH};
 use ejdb::Database;
 use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
+use simsearch::{SearchOptions, SimSearch};
 
 use crate::{get_unix_time, COLLECTION_ITEM_GAUGE, COLLECTION_TIMESTAMP_GAUGE};
 
@@ -102,6 +104,24 @@ impl DndDatabase {
             .map(|doc| doc.try_into())
             .filter_map(Result::ok)
             .collect())
+    }
+
+    pub fn get_cache(&self) -> HashMap<String, SimSearch<String>> {
+        let inner = self.0.try_lock().unwrap();
+        let collections = DndDatabase::list_collections(&inner.db);
+        let mut result = HashMap::with_capacity(collections.len());
+        collections.into_iter().for_each(|collection| {
+            let mut engine = SimSearch::new_with(get_search_options());
+            DndDatabase::list_items(&inner.db, &collection)
+                .unwrap_or_default()
+                .into_iter()
+                .for_each(|item| {
+                    engine.insert(item.clone(), &item);
+                });
+
+            result.insert(collection, engine);
+        });
+        result
     }
 
     fn list_collections(db: &Database) -> Vec<String> {
@@ -196,6 +216,13 @@ impl DndDatabase {
     }
 }
 
+pub fn get_search_options() -> SearchOptions {
+    SearchOptions::new()
+        .case_sensitive(false)
+        .stop_whitespace(false)
+        .threshold(0.85)
+}
+
 pub struct LogMessage {
     pub timestamp: u64,
     pub user_id: i64,
@@ -228,6 +255,15 @@ mod test {
 
     fn init() {
         let _ = TestLogger::init(LevelFilter::Trace, Config::default());
+    }
+
+    #[test]
+    fn test_get_cache() {
+        init();
+        let db = DndDatabase::new(get_db_path()).unwrap();
+        let cache = db.get_cache();
+        // info!("{:?}", cache);
+        assert!(cache.len() > 0);
     }
 
     #[test]
