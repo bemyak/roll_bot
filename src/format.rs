@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Write;
 use std::str::FromStr;
@@ -9,21 +8,19 @@ use percent_encoding::{percent_decode, utf8_percent_encode, NON_ALPHANUMERIC};
 use rand::prelude::*;
 use regex::Regex;
 use telegram_bot::MessageChat;
+use thiserror::Error;
 
 use crate::db::LogMessage;
 use crate::get_unix_time;
 use crate::PROJECT_URL;
 
-#[derive(Debug)]
-pub struct FormatError(String);
-
-impl Display for FormatError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
+#[derive(Error, Debug)]
+pub enum FormatError {
+    #[error("Formatting error ocurred: {0}")]
+    Other(String),
+    #[error("Too many dices were requested")]
+    TooManyDices,
 }
-
-impl Error for FormatError {}
 
 pub fn format_document(doc: bson::Document) -> String {
     let mut res = String::new();
@@ -166,23 +163,68 @@ pub fn format_collection_metadata(meta: ejdb::meta::DatabaseMetadata) -> String 
         .join("\n")
 }
 
+#[derive(Debug)]
+pub enum RollMode {
+    ADV,
+    DADV,
+    NORMAL,
+}
+
+#[derive(Debug)]
+pub struct Roll {
+    pub die: String,
+    pub roll_results: Vec<i32>,
+    pub total: i32,
+    pub mode: RollMode,
+    pub num: i32,
+    pub face: i32,
+}
+
+impl Display for Roll {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let roll_results = self
+            .roll_results
+            .iter()
+            .map(|roll| {
+                if *roll == 1 || *roll == self.face {
+                    format!("*{}*", roll)
+                } else {
+                    format!("{}", roll)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        write!(f, "`{}:` \\[{}] = *{}*", self.die, roll_results, self.total)
+    }
+}
+
 pub fn roll_dice(msg: &str) -> Result<String, FormatError> {
+    let response = roll_results(msg)?
+        .iter()
+        .map(|roll| roll.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if response.len() == 0 {
+        warn!("Cannot parse: {}", msg);
+        Ok("Err, sorry, I can't roll that. Maybe you need some /help ?".to_owned())
+    } else {
+        Ok(response)
+    }
+}
+
+pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
     lazy_static! {
-        static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+)\s*)?(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?").unwrap();
+        static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+))?\s*(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?").unwrap();
     }
 
-    enum MODE {
-        ADV,
-        DADV,
-        NORMAL,
-    }
-
-    let mut response = String::new();
+    let mut result = Vec::new();
 
     let iter = DICE_REGEX.captures_iter(msg);
 
     if iter.size_hint().0 > 100 {
-        return Ok("I don't have so many dices!".to_owned());
+        return Err(FormatError::TooManyDices);
     }
 
     for cap in iter {
@@ -210,17 +252,18 @@ pub fn roll_dice(msg: &str) -> Result<String, FormatError> {
             .flatten();
 
         let (mode, capacity) = match num {
-            "+" => (MODE::ADV, 2),
-            "-" => (MODE::DADV, 2),
+            "+" => (RollMode::ADV, 2),
+            "-" => (RollMode::DADV, 2),
             _ => (
-                MODE::NORMAL,
-                FromStr::from_str(num)
-                    .map_err(|err| FormatError(format!("Cannot parse roll expression: {}", err)))?,
+                RollMode::NORMAL,
+                FromStr::from_str(num).map_err(|err| {
+                    FormatError::Other(format!("Cannot parse roll expression: {}", err))
+                })?,
             ),
         };
 
-        if capacity > 100 {
-            return Ok("I don't have so many dices!".to_owned());
+        if capacity > 300 {
+            return Err(FormatError::TooManyDices);
         }
 
         let roll_results: Vec<i32> = (0..capacity)
@@ -228,44 +271,26 @@ pub fn roll_dice(msg: &str) -> Result<String, FormatError> {
             .collect();
 
         let mut total: i32 = match mode {
-            MODE::ADV => *roll_results.iter().max().unwrap_or(&0),
-            MODE::DADV => *roll_results.iter().min().unwrap_or(&0),
-            MODE::NORMAL => roll_results.iter().sum(),
+            RollMode::ADV => *roll_results.iter().max().unwrap_or(&0),
+            RollMode::DADV => *roll_results.iter().min().unwrap_or(&0),
+            RollMode::NORMAL => roll_results.iter().sum(),
         };
 
-        if response.len() > 0 {
-            response.push_str("\n");
-        }
-        let die = match mode {
-            MODE::ADV => format!("`d{} with advantage:`\t\\[", face),
-            MODE::DADV => format!("`d{} with disadvantage:`\t\\[", face),
-            MODE::NORMAL => format!("`{}d{}:`\t\\[", num, face),
+        let mut die = match mode {
+            RollMode::ADV => format!("d{} with advantage", face),
+            RollMode::DADV => format!("d{} with disadvantage", face),
+            RollMode::NORMAL => format!("{}d{}", num, face),
         };
-        response.push_str(&die);
-        response.push_str(
-            &roll_results
-                .iter()
-                .map(|i| {
-                    if *i == face || *i == 1 {
-                        format!("*{}*", i.to_string())
-                    } else {
-                        i.to_string()
-                    }
-                })
-                .collect::<Vec<String>>()
-                .join(", "),
-        );
-        response.push_str("]");
 
         if let (Some(bonus_sign), Some(bonus_value)) = (bonus_sign, bonus_value) {
-            response.push_str(&format!(" {} {}", bonus_sign, bonus_value));
+            die.push_str(&format!(" {} {}", bonus_sign, bonus_value));
             match bonus_sign {
                 "+" => total += bonus_value,
                 "-" => total -= bonus_value,
                 "*" => total *= bonus_value,
                 "/" => total /= bonus_value,
                 other => {
-                    let err = FormatError(format!(
+                    let err = FormatError::Other(format!(
                         "Cannot parse roll expression: unknown symbol {}",
                         other
                     ));
@@ -275,15 +300,17 @@ pub fn roll_dice(msg: &str) -> Result<String, FormatError> {
             }
         }
 
-        response.push_str(&format!(" = *{}*", total));
+        result.push(Roll {
+            die,
+            total,
+            roll_results,
+            mode,
+            face,
+            num: capacity,
+        })
     }
 
-    if response.len() == 0 {
-        warn!("Cannot parse: {}", msg);
-        Ok("Err, sorry, I can't roll that. Maybe you need some /help ?".to_owned())
-    } else {
-        Ok(response)
-    }
+    Ok(result)
 }
 
 pub fn help_message() -> String {
