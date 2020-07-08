@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::sync::Mutex;
-use std::{convert::identity, time::Instant};
+use std::{borrow::Cow, convert::identity, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
 use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_rustls::HttpsConnector;
+use regex::{Captures, Regex};
 use simsearch::SimSearch;
 use telegram_bot::{
     connector::{default_connector, hyper::HyperConnector, Connector},
@@ -384,6 +385,9 @@ impl Bot {
         text: &str,
         keyboard: Option<InlineKeyboardMarkup>,
     ) -> Result<(), telegram_bot::Error> {
+        let mut keyboard = keyboard.unwrap_or(InlineKeyboardMarkup::new());
+        let text = replace_links(text, &mut keyboard);
+
         let max_text_len = 4096;
 
         let mut start = 0;
@@ -408,7 +412,7 @@ impl Bot {
                 msg.chat
                     .text(&text[start..text.len()])
                     .parse_mode(ParseMode::Markdown)
-                    .reply_markup(keyboard.unwrap_or(InlineKeyboardMarkup::new())),
+                    .reply_markup(keyboard),
             )
             .await?;
         Ok(())
@@ -475,4 +479,48 @@ pub fn get_connector() -> Box<dyn Connector> {
             Ok(connector)
         })
         .unwrap_or(default_connector())
+}
+
+fn replace_links<'a>(text: &'a str, keyboard: &mut InlineKeyboardMarkup) -> Cow<'a, str> {
+    lazy_static! {
+        static ref LINK_REGEX: Regex =
+            Regex::new(r"\{@(?P<cmd>\w+)(?: (?P<arg>.+?)(?:\|(?P<source>\w+))?)?\}(?P<bonus>\d+)?")
+                .unwrap();
+    }
+
+    LINK_REGEX.replace_all(text, |caps: &Captures| {
+        let cmd = caps.name("cmd").unwrap().as_str();
+        let arg = caps.name("arg").map(|cap| cap.as_str()).unwrap_or_default();
+        let source = caps
+            .name("source")
+            .map(|cap| cap.as_str())
+            .unwrap_or_default();
+
+        match cmd {
+            "h" => match caps.name("bonus") {
+                Some(bonus) => {
+                    let bonus = bonus.as_str();
+                    let roll_results = roll_results(&format!("d20+{}", bonus)).unwrap();
+                    let roll = roll_results.get(0).unwrap();
+                    format!("+{} `[{}]`", bonus, roll.total)
+                }
+                None => "+".to_owned(),
+            },
+            "atk" => "".to_owned(),
+            "dice" | "damage" => {
+                let roll_results = roll_results(arg).unwrap();
+                let roll = roll_results.get(0).unwrap();
+                format!("{} `[{}]` ", arg, roll.total)
+            }
+            "item" | "spell" | "monster" => {
+                keyboard.add_row(vec![InlineKeyboardButton::callback(
+                    arg,
+                    format!("/{} {}", cmd, arg),
+                )]);
+                format!("_{}_ ", arg)
+            }
+            "scaledamage" => source.to_owned(),
+            _ => format!("_{}_ ", arg),
+        }
+    })
 }
