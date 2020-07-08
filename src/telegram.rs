@@ -333,14 +333,7 @@ impl Bot {
         match exact_match_result {
             Some(item) => {
                 let msg = format_document(item);
-                self.api
-                    .send(
-                        message
-                            .chat
-                            .text(msg.clone())
-                            .parse_mode(ParseMode::Markdown),
-                    )
-                    .await?;
+                self.send_item(message, &msg, None).await?;
                 Ok(Some(msg))
             }
             None => {
@@ -378,13 +371,47 @@ impl Bot {
                     )
                 };
 
-                self.api
-                    .send(message.chat.text(msg.clone()).reply_markup(keyboard))
-                    .await?;
+                self.send_item(message, &msg, Some(keyboard)).await?;
 
                 Ok(Some(msg.to_owned()))
             }
         }
+    }
+
+    async fn send_item(
+        &self,
+        msg: &Message,
+        text: &str,
+        keyboard: Option<InlineKeyboardMarkup>,
+    ) -> Result<(), telegram_bot::Error> {
+        let max_text_len = 4096;
+
+        let mut start = 0;
+        let mut end;
+
+        while text.len() - start > max_text_len {
+            end = text[start..start + max_text_len]
+                .rfind(" ")
+                .unwrap_or(start + 4096);
+            self.api
+                .send(
+                    msg.chat
+                        .text(&text[start..end])
+                        .parse_mode(ParseMode::Markdown),
+                )
+                .await?;
+            start = end + 1;
+        }
+
+        self.api
+            .send(
+                msg.chat
+                    .text(&text[start..text.len()])
+                    .parse_mode(ParseMode::Markdown)
+                    .reply_markup(keyboard.unwrap_or(InlineKeyboardMarkup::new())),
+            )
+            .await?;
+        Ok(())
     }
 
     fn parse_command(
