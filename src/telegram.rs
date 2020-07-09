@@ -22,8 +22,9 @@ use thiserror::Error;
 
 use crate::db::DndDatabase;
 use crate::format::*;
+use crate::collection::{Collection, COMMANDS};
+use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 use crate::PROJECT_URL;
-use crate::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 
 lazy_static! {
     static ref INITIAL_MARKUP: ReplyKeyboardMarkup = reply_markup!(
@@ -143,8 +144,7 @@ impl Bot {
                             let _ = iter.next();
 
                             if let Some(collection) = iter.next() {
-                                self.execute_command(&format!("/{}", collection), data, &message)
-                                    .await?;
+                                self.execute_command(collection, data, &message).await?;
                             }
                         }
                     }
@@ -223,16 +223,16 @@ impl Bot {
         match cmd.as_ref() {
             // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
             // The returned string value is used to log request-response pair into the database
-            "/help" | "/h" | "/about" | "/start" => self.help(message, arg).await,
-            "/roll" | "/r" => self.roll(message, arg).await,
-            "/stats" => self.stats(message).await,
-            "/item" | "/i" => {
-                self.search_item(vec!["item", "baseitem"], message, arg)
-                    .await
+            "help" | "h" | "about" | "start" => self.help(message, arg).await,
+            "roll" | "r" => self.roll(message, arg).await,
+            "stats" => self.stats(message).await,
+            _ => {
+                if let Some(item) = COMMANDS.get(cmd) {
+                    self.search_item(item, message, arg).await
+                } else {
+                    self.unknown(message, cmd).await
+                }
             }
-            "/monster" | "/m" => self.search_item(vec!["monster"], message, arg).await,
-            "/spell" | "/s" => self.search_item(vec!["spell"], message, arg).await,
-            _ => self.unknown(message, cmd).await,
         }
     }
 
@@ -344,12 +344,10 @@ impl Bot {
 
     async fn search_item(
         &self,
-        collections: Vec<&str>,
+        lookup_item: &Collection,
         message: &Message,
         arg: &str,
     ) -> Result<Option<String>, BotError> {
-        let default_collection_name = collections.get(0).clone().unwrap_or(&"item");
-
         if arg.is_empty() {
             let mut force_reply = ForceReply::new();
             force_reply.selective();
@@ -360,7 +358,7 @@ impl Bot {
                         .chat
                         .text(format!(
                             "What {} should I look for? Please, reply with a name:",
-                            default_collection_name
+                            lookup_item.get_default_collection()
                         ))
                         .reply_markup(force_reply),
                 )
@@ -369,7 +367,8 @@ impl Bot {
             return Ok(None);
         }
 
-        let exact_match_result = collections
+        let exact_match_result = lookup_item
+            .collections
             .iter()
             .map(|collection| self.db.get_item(collection, arg))
             .filter_map(Result::ok)
@@ -388,14 +387,12 @@ impl Bot {
 
                 let map = self.cache.try_lock().unwrap();
 
-                for collection in collections.clone() {
+                for collection in lookup_item.collections.clone() {
                     let engine = map.get(collection).unwrap();
                     let results = engine.search(arg);
 
-                    let command_prefix = "/".to_owned() + default_collection_name + " ";
-
                     results.iter().for_each(|item| {
-                        let command = command_prefix.clone() + item;
+                        let command = format!("{} {}", lookup_item.get_default_collection(), item);
                         let button = InlineKeyboardButton::callback(item.clone(), command);
 
                         found = true;
@@ -406,12 +403,12 @@ impl Bot {
                 let msg = if found {
                     format!(
                         "I don't have any {} with this exact name, but these looks similar:",
-                        default_collection_name
+                        lookup_item.get_default_collection()
                     )
                 } else {
                     format!(
                         "Can't find any {} with this name, sorry :(",
-                        default_collection_name
+                        lookup_item.get_default_collection()
                     )
                 };
 
@@ -467,7 +464,8 @@ impl Bot {
         entity: &MessageEntity,
         next_entity: Option<&&MessageEntity>,
     ) -> (String, String) {
-        let cmd_start = entity.offset as usize;
+        // We need to cut off the leading "/"
+        let cmd_start = entity.offset as usize + 1;
         let cmd_end = (entity.offset + entity.length) as usize;
 
         // In group chats command might be provided in /command@bot_name format
@@ -550,20 +548,23 @@ fn replace_links<'a>(text: &'a str, keyboard: &mut InlineKeyboardMarkup) -> Cow<
                 None => "+".to_owned(),
             },
             "atk" => "".to_owned(),
+            "scaledamage" => source.to_owned(),
             "dice" | "damage" => {
                 let roll_results = roll_results(arg).unwrap();
                 let roll = roll_results.get(0).unwrap();
                 format!("{} `[{}]` ", arg, roll.total)
             }
-            "item" | "spell" | "monster" => {
-                keyboard.add_row(vec![InlineKeyboardButton::callback(
-                    arg,
-                    format!("/{} {}", cmd, arg),
-                )]);
-                format!("_{}_ ", arg)
+            _ => {
+                if let Some(item) = COMMANDS.get(cmd) {
+                    keyboard.add_row(vec![InlineKeyboardButton::callback(
+                        format!("{}: {}", item.get_default_command(), arg),
+                        format!("{} {}", item.get_default_command(), arg),
+                    )]);
+                    format!("_{}_ ", arg)
+                } else {
+                    format!("_{}_ ", arg)
+                }
             }
-            "scaledamage" => source.to_owned(),
-            _ => format!("_{}_ ", arg),
         }
     })
 }

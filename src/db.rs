@@ -15,7 +15,8 @@ use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
 use simsearch::{SearchOptions, SimSearch};
 
-use crate::{get_unix_time, COLLECTION_ITEM_GAUGE, COLLECTION_TIMESTAMP_GAUGE};
+use crate::get_unix_time;
+use crate::metrics::{COLLECTION_ITEM_GAUGE, COLLECTION_TIMESTAMP_GAUGE};
 
 // System table should start with an underscore, so they will not be treated like D&D data collections
 const LOG_COLLECTION_NAME: &'static str = "_log";

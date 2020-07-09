@@ -2,14 +2,13 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 
-use futures::future::{join_all, BoxFuture, FutureExt};
+use futures::future::{join_all, try_join_all, BoxFuture, FutureExt, TryFutureExt};
+
 use serde_json::Value as JsonValue;
 
+use crate::collection::{Collection, COLLECTIONS};
+
 const BASE_URL: &str = "https://5e.tools/data";
-const SPELLS: &str = "/spells";
-const ITEMS: &str = "/items";
-const ITEMS_BASE: &str = "/items-base";
-const BESTIARY: &str = "/bestiary";
 const INDEX: &str = "/index.json";
 const EXTENSION: &str = ".json";
 
@@ -27,26 +26,33 @@ impl Display for FetchError {
 
 impl Error for FetchError {}
 
+impl Collection {
+    pub async fn fetch(&self) -> Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>> {
+        let work = self
+            .urls
+            .iter()
+            .map(|url| download(url.field_name, format!("{}/{}", BASE_URL, url.url)))
+            .collect::<Vec<_>>();
+
+        let results = try_join_all(work).await?;
+        let values = results.into_iter().flatten().collect::<Vec<_>>();
+        Ok(values)
+    }
+}
+
 pub async fn fetch() -> Result<HashMap<&'static str, Vec<JsonValue>>, Box<dyn Error + Send + Sync>>
 {
-    let mut result: HashMap<&'static str, Vec<JsonValue>> = HashMap::new();
-
-    for (collection, url) in vec![
-        ("item", BASE_URL.to_owned() + ITEMS),
-        ("baseitem", BASE_URL.to_owned() + ITEMS_BASE),
-        ("monster", BASE_URL.to_owned() + BESTIARY),
-        ("spell", BASE_URL.to_owned() + SPELLS),
-    ] {
-        result.insert(collection, download(collection, url).await?);
-    }
-
+    let work = COLLECTIONS.iter().map(|item| {
+        item.fetch()
+            .map_ok(move |result| (item.get_default_collection(), result))
+    });
+    let result = try_join_all(work).await?.into_iter().collect();
     info!("Fetch complete!");
-
     Ok(result)
 }
 
 async fn download(
-    collection: &'static str,
+    field_name: &'static str,
     url: String,
 ) -> Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>> {
     let file_url = url.clone() + EXTENSION;
@@ -59,9 +65,9 @@ async fn download(
             let text = response.text().await?;
             let json: JsonValue = serde_json::from_str(&text)?;
             if let JsonValue::Object(obj) = json {
-                let items = obj.get(collection).ok_or(FetchError {
+                let items = obj.get(field_name).ok_or(FetchError {
                     url: file_url,
-                    desc: format!("Response object doesn't have field {}", collection),
+                    desc: format!("Response object doesn't have field {}", field_name),
                 })?;
                 if let JsonValue::Array(arr) = items {
                     return Ok(arr.to_vec());
@@ -69,7 +75,7 @@ async fn download(
             }
             Ok(Vec::new())
         }
-        reqwest::StatusCode::NOT_FOUND => download_indexed(collection, url).await,
+        reqwest::StatusCode::NOT_FOUND => download_indexed(field_name, url).await,
         _ => Err::<_, Box<dyn Error + Send + Sync>>(Box::new(FetchError {
             url: file_url,
             desc: format!("Unexpected status code: {}", response.status()),
@@ -78,7 +84,7 @@ async fn download(
 }
 
 fn download_indexed(
-    collection: &'static str,
+    field_name: &'static str,
     url: String,
 ) -> BoxFuture<'static, Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>>> {
     async move {
@@ -94,7 +100,7 @@ fn download_indexed(
         let children = join_all(
             index
                 .values()
-                .map(|file| download(collection, url.clone() + "/" + remove_extension(file)))
+                .map(|file| download(field_name, url.clone() + "/" + remove_extension(file)))
                 .collect::<Vec<_>>(),
         )
         .await;
