@@ -42,7 +42,7 @@
         - name: "Prometheus"
           type: "prometheus"
           access: "proxy"
-          url: "https://{{ public_dns_name }}/prometheus"
+          url: "http://localhost:9090/prometheus"
           isDefault: true
 
 - hosts: rollbot

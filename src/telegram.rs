@@ -15,8 +15,8 @@ use telegram_bot::{
     prelude::*,
     reply_markup,
     types::reply_markup::*,
-    Api, CallbackQuery, GetMe, Message, MessageEntity, MessageEntityKind, MessageKind, ParseMode,
-    UpdateKind, User,
+    Api, CallbackQuery, GetMe, Message, MessageEntity, MessageEntityKind, MessageKind,
+    MessageOrChannelPost, ParseMode, UpdateKind, User,
 };
 use thiserror::Error;
 
@@ -127,6 +127,30 @@ impl Bot {
         let start_processing = Instant::now();
         match &message.kind {
             MessageKind::Text { data, entities } => {
+                // No command was specified, but maybe it is a response to the previous command
+                if entities.is_empty() {
+                    if let Some(MessageOrChannelPost::Message(reply)) =
+                        message.reply_to_message.clone().map(|reply| *reply)
+                    {
+                        if let MessageKind::Text {
+                            data: reply_data,
+                            entities: _,
+                        } = reply.kind
+                        {
+                            // reply_data contains our own message generated in `search_item` function, e.g.: "What item should I look for? ..."
+                            // The second word is our collection name
+                            let mut iter = reply_data.split_whitespace();
+                            let _ = iter.next();
+
+                            if let Some(collection) = iter.next() {
+                                self.execute_command(&format!("/{}", collection), data, &message)
+                                    .await?;
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+
                 let mut entities_iter = entities.into_iter().peekable();
 
                 while let Some(entity) = entities_iter.next() {
@@ -324,6 +348,27 @@ impl Bot {
         message: &Message,
         arg: &str,
     ) -> Result<Option<String>, BotError> {
+        let default_collection_name = collections.get(0).clone().unwrap_or(&"item");
+
+        if arg.is_empty() {
+            let mut force_reply = ForceReply::new();
+            force_reply.selective();
+
+            self.api
+                .send(
+                    message
+                        .chat
+                        .text(format!(
+                            "What {} should I look for? Please, reply with a name:",
+                            default_collection_name
+                        ))
+                        .reply_markup(force_reply),
+                )
+                .await?;
+
+            return Ok(None);
+        }
+
         let exact_match_result = collections
             .iter()
             .map(|collection| self.db.get_item(collection, arg))
@@ -338,8 +383,6 @@ impl Bot {
                 Ok(Some(msg))
             }
             None => {
-                let default_collection_name = collections.get(0).clone().unwrap_or(&"thing");
-
                 let mut keyboard = InlineKeyboardMarkup::new();
                 let mut found = false;
 
