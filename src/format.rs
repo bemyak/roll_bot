@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Write;
-use std::str::FromStr;
+use std::{mem, str::FromStr};
 
 use ejdb::bson;
 use percent_encoding::{percent_decode, utf8_percent_encode, NON_ALPHANUMERIC};
@@ -9,6 +9,7 @@ use rand::prelude::*;
 use regex::Regex;
 use telegram_bot::MessageChat;
 use thiserror::Error;
+use zalgo::{Generator, GeneratorArgs, ZalgoSize};
 
 use crate::db::LogMessage;
 use crate::get_unix_time;
@@ -178,24 +179,33 @@ pub struct Roll {
     pub mode: RollMode,
     pub num: i32,
     pub face: i32,
+    pub zalgo: bool,
 }
 
 impl Display for Roll {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let roll_results = self
-            .roll_results
-            .iter()
-            .map(|roll| {
-                if *roll == 1 || *roll == self.face {
-                    format!("*{}*", roll)
-                } else {
-                    format!("{}", roll)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+        let roll_results = self.roll_results.iter().map(|roll| {
+            if *roll == 1 || *roll == self.face {
+                format!("*{}*", roll)
+            } else {
+                format!("{}", roll)
+            }
+        });
 
-        write!(f, "`{}:` \\[{}] = *{}*", self.die, roll_results, self.total)
+        let mut die = self.die.clone();
+        let mut total = format!("{}", self.total);
+        let mut roll_results_str: String;
+        if self.zalgo {
+            roll_results_str = roll_results.take(6).collect::<Vec<_>>().join(", ");
+
+            zalgofy(&mut die);
+            zalgofy(&mut roll_results_str);
+            zalgofy(&mut total);
+        } else {
+            roll_results_str = roll_results.collect::<Vec<_>>().join(", ");
+        }
+
+        write!(f, "`{}:` \\[{}] = *{}*", die, roll_results_str, total)
     }
 }
 
@@ -240,11 +250,18 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
         }
 
         let num = cap.name("num").map_or("1", |m| m.as_str());
-        let face: i32 = cap
-            .name("face")
-            .map(|m| FromStr::from_str(m.as_str()).ok())
-            .flatten()
-            .unwrap_or(20);
+        let (face, zalgo): (i32, bool) = {
+            let face = cap
+                .name("face")
+                .map(|m| FromStr::from_str(m.as_str()).ok())
+                .flatten()
+                .unwrap_or(20);
+            if face == 0 {
+                (666, true)
+            } else {
+                (face, false)
+            }
+        };
         let bonus_sign = cap.name("bonus_sign").map(|m| m.as_str());
         let bonus_value: Option<i32> = cap
             .name("bonus_value")
@@ -307,6 +324,7 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
             mode,
             face,
             num: capacity,
+            zalgo,
         })
     }
 
@@ -350,4 +368,14 @@ pub fn tg_decode(msg: &str) -> String {
     percent_decode(url_encoded.as_bytes())
         .decode_utf8_lossy()
         .to_string()
+}
+
+pub fn zalgofy(text: &mut String) {
+    lazy_static! {
+        static ref OPTIONS: GeneratorArgs = GeneratorArgs::new(true, true, true, ZalgoSize::Maxi);
+    }
+    let mut zalgo = Generator::new();
+    let mut buf = String::new();
+    zalgo.gen(text.clone(), &mut buf, &OPTIONS);
+    mem::swap(text, &mut buf);
 }

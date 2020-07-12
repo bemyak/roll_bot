@@ -6,10 +6,10 @@ extern crate lazy_static;
 #[macro_use]
 extern crate prometheus;
 
+mod collection;
 mod db;
 mod fetch;
 mod format;
-mod collection;
 mod metrics;
 mod telegram;
 
