@@ -19,8 +19,12 @@ use crate::PROJECT_URL;
 pub enum FormatError {
     #[error("Formatting error ocurred: {0}")]
     Other(String),
-    #[error("Too many dices were requested")]
+    #[error("I don't have so many dices!")]
     TooManyDices,
+    #[error("I don't have a suitable dice tray for that!")]
+    TooManyRolls,
+    #[error("I don't have such a large die!")]
+    TooLargeDie,
 }
 
 pub fn format_document(doc: bson::Document) -> String {
@@ -229,15 +233,23 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
         static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+))?\s*(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?").unwrap();
     }
 
+    const MAX_ROLLS: usize = 20;
+    const MAX_FACES: i32 = 10000;
+    const MAX_NUM: i32 = 100;
+
     let mut result = Vec::new();
 
-    let iter = DICE_REGEX.captures_iter(msg);
+    let iter = DICE_REGEX.captures_iter(msg).enumerate();
 
-    if iter.size_hint().0 > 100 {
-        return Err(FormatError::TooManyDices);
+    if iter.size_hint().0 > MAX_ROLLS {
+        return Err(FormatError::TooManyRolls);
     }
 
-    for cap in iter {
+    for (i, cap) in iter {
+        if i > MAX_ROLLS {
+            return Err(FormatError::TooManyRolls);
+        }
+
         if msg != ""
             && cap
                 .name("num")
@@ -262,6 +274,11 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
                 (face, false)
             }
         };
+
+        if face > MAX_FACES {
+            return Err(FormatError::TooLargeDie);
+        }
+
         let bonus_sign = cap.name("bonus_sign").map(|m| m.as_str());
         let bonus_value: Option<i32> = cap
             .name("bonus_value")
@@ -273,13 +290,11 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
             "-" => (RollMode::DADV, 2),
             _ => (
                 RollMode::NORMAL,
-                FromStr::from_str(num).map_err(|err| {
-                    FormatError::Other(format!("Cannot parse roll expression: {}", err))
-                })?,
+                FromStr::from_str(num).map_err(|_| FormatError::TooManyDices)?,
             ),
         };
 
-        if capacity > 300 {
+        if capacity > MAX_NUM {
             return Err(FormatError::TooManyDices);
         }
 

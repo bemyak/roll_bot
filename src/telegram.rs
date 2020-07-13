@@ -296,7 +296,13 @@ impl Bot {
     }
 
     async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
-        let response = roll_dice(arg)?;
+        let response = match roll_dice(arg) {
+            Ok(response) => response,
+            Err(err) => match err {
+                FormatError::Other(_) => return Err(BotError::FormatError(err)),
+                _ => err.to_string(),
+            },
+        };
         self.split_and_send(message, &response, None, vec!['\n'])
             .await?;
         Ok(Some(response))
