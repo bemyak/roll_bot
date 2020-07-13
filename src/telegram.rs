@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::sync::Mutex;
-use std::{borrow::Cow, convert::identity, time::Instant};
+use std::{borrow::Cow, cmp::min, convert::identity, mem, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
@@ -20,9 +20,9 @@ use telegram_bot::{
 };
 use thiserror::Error;
 
+use crate::collection::{Collection, COMMANDS};
 use crate::db::DndDatabase;
 use crate::format::*;
-use crate::collection::{Collection, COMMANDS};
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 use crate::PROJECT_URL;
 
@@ -297,13 +297,7 @@ impl Bot {
 
     async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
         let response = roll_dice(arg)?;
-        self.api
-            .send(
-                message
-                    .chat
-                    .text(response.clone())
-                    .parse_mode(ParseMode::Markdown),
-            )
+        self.split_and_send(message, &response, None, vec!['\n'])
             .await?;
         Ok(Some(response))
     }
@@ -377,8 +371,16 @@ impl Bot {
 
         match exact_match_result {
             Some(item) => {
-                let msg = format_document(item);
-                self.send_item(message, &msg, None).await?;
+                let mut msg = format_document(item);
+                let mut keyboard = InlineKeyboardMarkup::new();
+                replace_links(&mut msg, &mut keyboard);
+                self.split_and_send(
+                    message,
+                    &msg,
+                    Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
+                    vec![' '],
+                )
+                .await?;
                 Ok(Some(msg))
             }
             None => {
@@ -400,7 +402,7 @@ impl Bot {
                     });
                 }
 
-                let msg = if found {
+                let mut msg = if found {
                     format!(
                         "I don't have any {} with this exact name, but these looks similar:",
                         lookup_item.get_default_collection()
@@ -412,49 +414,49 @@ impl Bot {
                     )
                 };
 
-                self.send_item(message, &msg, Some(keyboard)).await?;
+                replace_links(&mut msg, &mut keyboard);
+                self.split_and_send(
+                    message,
+                    &msg,
+                    Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
+                    vec![' '],
+                )
+                .await?;
 
                 Ok(Some(msg.to_owned()))
             }
         }
     }
 
-    async fn send_item(
+    async fn split_and_send(
         &self,
         msg: &Message,
         text: &str,
-        keyboard: Option<InlineKeyboardMarkup>,
+        keyboard: Option<ReplyMarkup>,
+        separators: Vec<char>,
     ) -> Result<(), telegram_bot::Error> {
-        let mut keyboard = keyboard.unwrap_or(InlineKeyboardMarkup::new());
-        let text = replace_links(text, &mut keyboard);
-
-        let max_text_len = 4096;
-
-        let mut start = 0;
-        let mut end;
-
-        while text.len() - start > max_text_len {
-            end = text[start..start + max_text_len]
-                .rfind(" ")
-                .unwrap_or(start + 4096);
-            self.api
-                .send(
-                    msg.chat
-                        .text(&text[start..end])
-                        .parse_mode(ParseMode::Markdown),
-                )
-                .await?;
-            start = end + 1;
+        if text.is_empty() {
+            return Ok(());
         }
 
-        self.api
-            .send(
-                msg.chat
-                    .text(&text[start..text.len()])
-                    .parse_mode(ParseMode::Markdown)
-                    .reply_markup(keyboard),
-            )
-            .await?;
+        let messages = split(text, separators);
+        let (last, all) = messages.split_last().unwrap();
+
+        for text in all {
+            self.api
+                .send(msg.chat.text(*text).parse_mode(ParseMode::Markdown))
+                .await?;
+        }
+
+        let mut answer = msg.chat.text(*last);
+
+        answer.parse_mode(ParseMode::Markdown);
+
+        if let Some(markup) = keyboard {
+            answer.reply_markup(markup);
+        }
+
+        self.api.send(answer).await?;
         Ok(())
     }
 
@@ -522,14 +524,16 @@ pub fn get_connector() -> Box<dyn Connector> {
         .unwrap_or(default_connector())
 }
 
-fn replace_links<'a>(text: &'a str, keyboard: &mut InlineKeyboardMarkup) -> Cow<'a, str> {
+pub fn replace_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMarkup) {
     lazy_static! {
         static ref LINK_REGEX: Regex =
             Regex::new(r"\{@(?P<cmd>\w+)(?: (?P<arg>.+?)(?:\|(?P<source>\w+))?)?\}(?P<bonus>\d+)?")
                 .unwrap();
     }
 
-    LINK_REGEX.replace_all(text, |caps: &Captures| {
+    let text_copy = text.clone();
+
+    let result: Cow<str> = LINK_REGEX.replace_all(&text_copy, |caps: &Captures| {
         let cmd = caps.name("cmd").unwrap().as_str();
         let arg = caps.name("arg").map(|cap| cap.as_str()).unwrap_or_default();
         let source = caps
@@ -566,5 +570,39 @@ fn replace_links<'a>(text: &'a str, keyboard: &mut InlineKeyboardMarkup) -> Cow<
                 }
             }
         }
-    })
+    });
+
+    mem::replace(text, result.into_owned());
+}
+
+fn split(text: &str, separators: Vec<char>) -> Vec<&str> {
+    const MAX_TEXT_LEN: usize = 4096;
+    let mut result = Vec::new();
+
+    let bytes = text.as_bytes();
+
+    let mut start = 0;
+    let mut end;
+
+    while start < bytes.len() {
+        let hard_end = min(start + MAX_TEXT_LEN, bytes.len());
+        end = {
+            if hard_end == bytes.len() {
+                hard_end
+            } else {
+                bytes[start..hard_end]
+                    .iter()
+                    .rposition(|c| separators.contains(&(*c as char)))
+                    .map(|i| i + start)
+                    .unwrap_or(hard_end)
+            }
+        };
+
+        // We already know that it is a valid utf8
+        let s = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) };
+        result.push(s);
+        start = end + 1;
+    }
+
+    result
 }

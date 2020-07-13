@@ -372,10 +372,10 @@ pub fn tg_decode(msg: &str) -> String {
 
 pub fn zalgofy(text: &mut String) {
     lazy_static! {
-        static ref OPTIONS: GeneratorArgs = GeneratorArgs::new(true, true, true, ZalgoSize::Maxi);
+        static ref OPTIONS: GeneratorArgs = GeneratorArgs::new(true, true, true, ZalgoSize::None);
     }
     let mut zalgo = Generator::new();
     let mut buf = String::new();
     zalgo.gen(text.clone(), &mut buf, &OPTIONS);
-    mem::swap(text, &mut buf);
+    mem::replace(text, buf);
 }
