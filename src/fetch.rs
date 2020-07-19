@@ -70,7 +70,24 @@ async fn download(
                     desc: format!("Response object doesn't have field {}", field_name),
                 })?;
                 if let JsonValue::Array(arr) = items {
-                    return Ok(arr.to_vec());
+                    // TODO: Do not filter out _copy elements when they can be formatted properly
+                    let arr = arr
+                        .to_vec()
+                        .into_iter()
+                        .filter(|val| {
+                            if let JsonValue::Object(obj) = val {
+                                if let Some(_) = obj.get("_copy") {
+                                    false
+                                } else {
+                                    true
+                                }
+                            } else {
+                                true
+                            }
+                        })
+                        .collect::<Vec<JsonValue>>();
+
+                    return Ok(arr);
                 }
             }
             Ok(Vec::new())

@@ -61,7 +61,7 @@ impl DndDatabase {
         ))?;
         let mut inner = self.0.try_lock().unwrap();
         inner.timestamp = Instant::now();
-        inner.db.drop_collection(collection, false)?;
+        inner.db.drop_collection(collection, true)?;
         let coll = inner.db.collection(collection)?;
         arr.iter()
             .filter_map(|elem| elem.as_document())
