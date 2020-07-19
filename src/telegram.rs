@@ -558,11 +558,11 @@ pub fn replace_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMark
                 None => "+".to_owned(),
             },
             "atk" => "".to_owned(),
-            "scaledamage" => source.to_owned(),
+            "scaledamage" => format!("*{}*", source),
             "dice" | "damage" => {
                 let roll_results = roll_results(arg).unwrap();
                 let roll = roll_results.get(0).unwrap();
-                format!("{} `[{}]` ", arg, roll.total)
+                format!("*{}* `[{}]` ", arg, roll.total)
             }
             _ => {
                 if let Some(item) = COMMANDS.get(cmd) {
@@ -578,7 +578,7 @@ pub fn replace_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMark
         }
     });
 
-    mem::replace(text, result.into_owned());
+    mem::swap(text, &mut result.into_owned());
 }
 
 fn split(text: &str, separators: Vec<char>) -> Vec<&str> {
