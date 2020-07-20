@@ -496,7 +496,7 @@ impl Bot {
 
         // If there is no args, it could be that they are specified as part of the command
         // e.g.: /roll_2d8@bot_name
-        if arg.is_empty() {
+        let (cmd, arg) = if arg.is_empty() {
             let decoded_cmd = tg_decode(cmd);
             trace!("{}", decoded_cmd);
             let mut iter = decoded_cmd.split("_");
@@ -505,8 +505,10 @@ impl Bot {
                 iter.collect::<Vec<&str>>().join(" "),
             )
         } else {
-            (cmd.to_owned(), arg.to_owned())
-        }
+            (cmd.to_owned().to_lowercase(), arg.to_owned())
+        };
+
+        (cmd.to_lowercase(), arg)
     }
 }
 
