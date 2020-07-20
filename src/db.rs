@@ -250,7 +250,7 @@ impl TryFrom<bson::ordered::OrderedDocument> for LogMessage {
 #[cfg(test)]
 mod test {
     use super::DndDatabase;
-    use crate::format::format_document;
+    use crate::format::item::format_document;
 
     use simplelog::*;
 
