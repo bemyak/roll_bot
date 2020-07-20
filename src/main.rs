@@ -43,11 +43,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         fetch_job(fetch_db).await;
     });
 
-    let bot = telegram::Bot::new(db.clone()).await?;
-
-    bot.start().await;
-
-    Ok(())
+    loop {
+        let bot = telegram::Bot::new(db.clone()).await?;
+        bot.start().await;
+        error!("The bot has crashed! Restarting...");
+    }
 }
 
 async fn fetch_job(mut db: DndDatabase) {
