@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::format::utils::zalgofy;
 
 #[derive(Error, Debug)]
-pub enum FormatError {
+pub enum DieFormatError {
     #[error("Formatting error ocurred: {0}")]
     Other(String),
     #[error("I don't have so many dices!")]
@@ -64,7 +64,7 @@ impl Display for Roll {
     }
 }
 
-pub fn roll_dice(msg: &str) -> Result<String, FormatError> {
+pub fn roll_dice(msg: &str) -> Result<String, DieFormatError> {
     let response = roll_results(msg)?
         .iter()
         .map(|roll| roll.to_string())
@@ -79,7 +79,7 @@ pub fn roll_dice(msg: &str) -> Result<String, FormatError> {
     }
 }
 
-pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
+pub fn roll_results(msg: &str) -> Result<Vec<Roll>, DieFormatError> {
     lazy_static! {
         static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+))?\s*(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?").unwrap();
     }
@@ -90,15 +90,17 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
 
     let mut result = Vec::new();
 
-    let iter = DICE_REGEX.captures_iter(msg).enumerate();
+    // Small trick to get type hints work for lazy static
+    let dice_regex: &Regex = &*DICE_REGEX;
+    let iter = dice_regex.captures_iter(msg).enumerate();
 
     if iter.size_hint().0 > MAX_ROLLS {
-        return Err(FormatError::TooManyRolls);
+        return Err(DieFormatError::TooManyRolls);
     }
 
     for (i, cap) in iter {
         if i > MAX_ROLLS {
-            return Err(FormatError::TooManyRolls);
+            return Err(DieFormatError::TooManyRolls);
         }
 
         if msg != ""
@@ -127,7 +129,7 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
         };
 
         if face > MAX_FACES {
-            return Err(FormatError::TooLargeDie);
+            return Err(DieFormatError::TooLargeDie);
         }
 
         let bonus_sign = cap.name("bonus_sign").map(|m| m.as_str());
@@ -141,12 +143,12 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
             "-" => (RollMode::DADV, 2),
             _ => (
                 RollMode::NORMAL,
-                FromStr::from_str(num).map_err(|_| FormatError::TooManyDices)?,
+                FromStr::from_str(num).map_err(|_| DieFormatError::TooManyDices)?,
             ),
         };
 
         if capacity > MAX_NUM {
-            return Err(FormatError::TooManyDices);
+            return Err(DieFormatError::TooManyDices);
         }
 
         let roll_results: Vec<i32> = (0..capacity)
@@ -173,7 +175,7 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, FormatError> {
                 "*" => total *= bonus_value,
                 "/" => total /= bonus_value,
                 other => {
-                    let err = FormatError::Other(format!(
+                    let err = DieFormatError::Other(format!(
                         "Cannot parse roll expression: unknown symbol {}",
                         other
                     ));

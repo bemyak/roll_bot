@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use crate::collection::{Collection, COMMANDS};
 use crate::db::DndDatabase;
-use crate::format::{db::*, item::*, roll::*, telegram::*, utils::*};
+use crate::format::{db::*, roll::*, spell::*, telegram::*, utils::*, Entry};
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 use crate::PROJECT_URL;
 
@@ -43,8 +43,11 @@ pub enum BotError {
     #[error("Database Error")]
     DbError(#[from] ejdb::Error),
 
-    #[error("Format Error")]
-    FormatError(#[from] FormatError),
+    #[error("Die Format Error")]
+    DieFormatError(#[from] DieFormatError),
+
+    #[error("Entry Format Error")]
+    EntryFormatError,
 }
 
 pub struct Bot {
@@ -299,7 +302,7 @@ impl Bot {
         let response = match roll_dice(arg) {
             Ok(response) => response,
             Err(err) => match err {
-                FormatError::Other(_) => return Err(BotError::FormatError(err)),
+                DieFormatError::Other(_) => return Err(BotError::DieFormatError(err)),
                 _ => err.to_string(),
             },
         };
@@ -377,7 +380,13 @@ impl Bot {
 
         match exact_match_result {
             Some(item) => {
-                let mut msg = format_document(item);
+                let mut msg = match lookup_item.type_ {
+                    crate::collection::CollectionType::Item => item.format(),
+                    crate::collection::CollectionType::Monster => item.format(),
+                    crate::collection::CollectionType::Spell => {
+                        item.format_spell().ok_or(BotError::EntryFormatError)?
+                    }
+                };
                 let mut keyboard = InlineKeyboardMarkup::new();
                 replace_links(&mut msg, &mut keyboard);
                 self.split_and_send(

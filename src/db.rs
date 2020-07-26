@@ -250,7 +250,7 @@ impl TryFrom<bson::ordered::OrderedDocument> for LogMessage {
 #[cfg(test)]
 mod test {
     use super::DndDatabase;
-    use crate::format::item::format_document;
+    use crate::format::Entry;
 
     use simplelog::*;
 
@@ -280,7 +280,7 @@ mod test {
         let db = DndDatabase::new(get_db_path()).unwrap();
         let i = db.get_item("spell", "Fireball").unwrap().unwrap();
         info!("{:#?}", i);
-        info!("{}", format_document(i));
+        info!("{}", i.format());
     }
 
     fn get_db_path() -> &'static str {
