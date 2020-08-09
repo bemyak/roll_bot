@@ -4,7 +4,7 @@ pub mod spell;
 pub mod telegram;
 pub mod utils;
 
-use std::fmt::Write;
+use std::{convert::identity, fmt::Write};
 
 use comfy_table::{presets::ASCII_NO_BORDERS, Cell, ContentArrangement, Row, Table};
 use ejdb::bson::Document;
@@ -177,13 +177,8 @@ fn get_string_array(doc: &Document, key: &str) -> Option<Vec<String>> {
     let mut result = Vec::new();
     let items = doc.get_array(key).ok()?;
     for item in items {
-        match item {
-            Bson::String(entry) => {
-                result.push(entry.clone());
-            }
-            _ => {
-                continue;
-            }
+        if let Bson::String(entry) = item {
+            result.push(entry.clone());
         }
     }
     Some(result)
@@ -214,6 +209,34 @@ fn simple_format(bs: &Bson) -> String {
     }
 }
 
+pub fn cost_to_string(cost: i64) -> String {
+    let cooper = cost % 10;
+    let silver = ((cost - cooper) / 10) % 10;
+    let gold = (cost - silver - cooper) / 100;
+
+    let cooper = if cooper == 0 {
+        None
+    } else {
+        Some(format!("{}cp", cooper))
+    };
+    let silver = if silver == 0 {
+        None
+    } else {
+        Some(format!("{}sp", silver))
+    };
+    let gold = if gold == 0 {
+        None
+    } else {
+        Some(format!("{}gp", gold))
+    };
+
+    vec![gold, silver, cooper]
+        .into_iter()
+        .filter_map(identity)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn demarkup(s: &str) -> String {
     lazy_static! {
         static ref BOLD: Regex = Regex::new(r"(.*)\*(.+)\*(.*)").unwrap();
@@ -230,4 +253,57 @@ fn demarkup(s: &str) -> String {
     let s = ROLL.replace_all(&s, "$1$2$3");
 
     s.into()
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn test_cost_to_string() {
+        assert_eq!(cost_to_string(1234567), "12345gp 6sp 7cp".to_string())
+    }
+
+    #[test]
+    fn test_cost_to_string_gp() {
+        assert_eq!(cost_to_string(1234500), "12345gp".to_string())
+    }
+}
+
+pub trait FilterJoinable: IntoIterator {
+    fn filter_join(self, sep: &str) -> Option<String>;
+}
+
+impl<T> FilterJoinable for Vec<Option<T>>
+where
+    T: ToString,
+{
+    fn filter_join(self, sep: &str) -> Option<String> {
+        let s = self
+            .into_iter()
+            .filter_map(identity)
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(sep);
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    }
+}
+
+pub trait Capitalizable {
+    fn capitalize(self) -> String;
+}
+
+impl Capitalizable for String {
+    fn capitalize(self) -> String {
+        let mut c = self.chars();
+        match c.next() {
+            None => String::new(),
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        }
+    }
 }

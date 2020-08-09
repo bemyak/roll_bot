@@ -1,4 +1,4 @@
-use super::Entry;
+use super::{Capitalizable, Entry, FilterJoinable};
 use ejdb::bson::Document;
 use ordinal::Ordinal;
 use std::convert::identity;
@@ -65,16 +65,12 @@ impl Spell for Document {
             .into_iter()
             .map(|time| time.as_document())
             .filter_map(identity)
-            .map(|time| {
+            .filter_map(|time| {
                 let number = time.get_i64("number").map(|number| number.to_string()).ok();
                 let unit = time.get_str("unit").map(str::to_owned).ok();
                 let condition = time.get_str("condition").map(str::to_owned).ok();
 
-                vec![number, unit, condition]
-                    .into_iter()
-                    .filter_map(identity)
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                vec![number, unit, condition].filter_join(" ")
             })
             .collect::<Vec<_>>()
             .join(", ");
@@ -87,15 +83,42 @@ impl Spell for Document {
     }
 
     fn get_range(&self) -> Option<String> {
-        None
+        let range = self.get_document("range").ok()?;
+        let type_ = range.get_str("type").map(|type_| type_.to_string()).ok();
+        let distance = get_distance(range);
+
+        vec![distance, type_].filter_join(" ")
     }
 
     fn get_components(&self) -> Option<String> {
-        None
+        let components = self.get_document("components").ok()?;
+
+        let v = components.get_bool("v").unwrap_or(false);
+        let v = if v { Some("V".to_string()) } else { None };
+
+        let s = components.get_bool("s").unwrap_or(false);
+        let s = if s { Some("S".to_string()) } else { None };
+
+        let m = get_material(components);
+
+        vec![v, s, m].filter_join(", ")
     }
 
     fn get_duration(&self) -> Option<String> {
-        None
+        let durations = self.get_array("duration").ok()?;
+
+        let durations = durations
+            .into_iter()
+            .filter_map(|bs| bs.as_document())
+            .filter_map(|doc| get_duration(doc))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        if durations.is_empty() {
+            None
+        } else {
+            Some(durations)
+        }
     }
 
     fn get_at_higher_levels(&self) -> Option<Vec<String>> {
@@ -115,6 +138,18 @@ impl Spell for Document {
             s.push_str(&format!("\n*Casting time*: {}", &casting_time));
         }
 
+        if let Some(range) = self.get_range() {
+            s.push_str(&format!("\n*Range*: {}", &range));
+        }
+
+        if let Some(components) = self.get_components() {
+            s.push_str(&format!("\n*Components*: {}", &components));
+        }
+
+        if let Some(duration) = self.get_duration() {
+            s.push_str(&format!("\n*Duration*: {}", &duration));
+        }
+
         if let Some(entries) = self.get_entries() {
             s.push_str(&format!("\n\n{}", &entries.join("\n")));
         }
@@ -125,4 +160,74 @@ impl Spell for Document {
 
         Some(s)
     }
+}
+
+fn get_distance(range: &Document) -> Option<String> {
+    let distance = range.get_document("distance").ok()?;
+    let type_ = distance.get_str("type").map(|type_| type_.to_string()).ok();
+    let amount = distance
+        .get_i64("amount")
+        .map(|amount| amount.to_string())
+        .ok();
+
+    vec![amount, type_].filter_join(" ")
+}
+
+fn get_material(components: &Document) -> Option<String> {
+    let m = components.get("m")?;
+    match m {
+        ejdb::bson_crate::Bson::String(s) => Some(format!("M ({})", s)),
+        ejdb::bson_crate::Bson::Boolean(_) => Some("M".to_string()),
+        ejdb::bson_crate::Bson::Document(obj) => {
+            let text = obj.get_str("text");
+            match text {
+                Ok(text) => Some(format!("M ({})", text)),
+                Err(_) => Some("M".to_string()),
+            }
+        }
+        _ => None,
+    }
+}
+
+fn get_duration(duration: &Document) -> Option<String> {
+    let type_ = duration.get_str("type").ok()?;
+    let concentration = duration
+        .get_bool("concentration")
+        .ok()
+        .map(|c| {
+            if c {
+                Some("concentration".to_string())
+            } else {
+                None
+            }
+        })
+        .flatten();
+    let duration = duration
+        .get_document("duration")
+        .map(|duration| {
+            let type_ = duration.get_str("type").map(|s| s.to_string()).ok();
+            let amount = duration
+                .get_i64("amount")
+                .map(|amount| amount.to_string())
+                .ok();
+            let up_to = duration.get_bool("upTo").unwrap_or(false);
+            let up_to = if up_to {
+                Some("up to".to_string())
+            } else {
+                None
+            };
+
+            vec![up_to, amount, type_].filter_join(" ")
+        })
+        .ok()
+        .flatten();
+
+    let s = vec![concentration, duration].filter_join(", ");
+
+    let result = match type_ {
+        "timed" => s,
+        _ => vec![Some(type_.to_string()), s].filter_join(", "),
+    };
+
+    result.map(|s| s.capitalize())
 }
