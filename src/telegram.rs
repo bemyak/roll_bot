@@ -25,6 +25,7 @@ use crate::db::DndDatabase;
 use crate::format::{db::*, roll::*, spell::*, telegram::*, utils::*, Entry};
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 use crate::PROJECT_URL;
+use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 
 lazy_static! {
     static ref INITIAL_MARKUP: ReplyKeyboardMarkup = reply_markup!(
@@ -379,16 +380,16 @@ impl Bot {
             .next();
 
         match exact_match_result {
-            Some(item) => {
-                let mut msg = match lookup_item.type_ {
+            Some(mut item) => {
+                let mut keyboard = InlineKeyboardMarkup::new();
+                replace_links(&mut item, &mut keyboard);
+                let msg = match lookup_item.type_ {
                     crate::collection::CollectionType::Item => item.format(),
                     crate::collection::CollectionType::Monster => item.format(),
                     crate::collection::CollectionType::Spell => {
                         item.format_spell().ok_or(BotError::EntryFormatError)?
                     }
                 };
-                let mut keyboard = InlineKeyboardMarkup::new();
-                replace_links(&mut msg, &mut keyboard);
                 self.split_and_send(
                     message,
                     &msg,
@@ -429,7 +430,7 @@ impl Bot {
                     )
                 };
 
-                replace_links(&mut msg, &mut keyboard);
+                replace_string_links(&mut msg, &mut keyboard);
                 self.split_and_send(
                     message,
                     &msg,
@@ -541,10 +542,35 @@ pub fn get_connector() -> Box<dyn Connector> {
         .unwrap_or(default_connector())
 }
 
-pub fn replace_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMarkup) {
+pub fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
+    let keys: Vec<String> = doc.keys().cloned().collect();
+    for key in keys {
+        let entry = doc.entry(key).or_insert(Bson::String("".to_string()));
+        replace_bson_links(entry, keyboard);
+    }
+}
+
+fn replace_bson_links(b: &mut Bson, keyboard: &mut InlineKeyboardMarkup) {
+    match b {
+        Bson::String(val) => {
+            replace_string_links(val, keyboard);
+        }
+        Bson::Array(arr) => {
+            for mut val in arr {
+                replace_bson_links(&mut val, keyboard);
+            }
+        }
+        Bson::Document(doc) => {
+            replace_links(doc, keyboard);
+        }
+        _ => {}
+    }
+}
+
+fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMarkup) {
     lazy_static! {
         static ref LINK_REGEX: Regex =
-            Regex::new(r"\{@(?P<cmd>\w+)(?: (?P<arg>.+?)(?:\|(?P<source>\w+))?)?\}(?P<bonus>\d+)?")
+            Regex::new(r"\{@(?P<cmd>\w+)(?:\s+(?P<arg1>.+?))?(?:\|(?P<arg2>.*?))?(?:\|(?P<arg3>.*?))?(?:\|(?P<arg4>.*?))?\}(?P<bonus>\d+)?")
                 .unwrap();
     }
 
@@ -552,7 +578,13 @@ pub fn replace_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMark
 
     let result: Cow<str> = LINK_REGEX.replace_all(&text_copy, |caps: &Captures| {
         let cmd = caps.name("cmd").unwrap().as_str();
-        let arg = caps.name("arg").map(|cap| cap.as_str()).unwrap_or_default();
+        let arg1 = caps
+            .name("arg1")
+            .map(|cap| cap.as_str())
+            .unwrap_or_default();
+        let arg2 = caps.name("arg2").map(|cap| cap.as_str());
+        let arg3 = caps.name("arg3").map(|cap| cap.as_str());
+        let arg4 = caps.name("arg4").map(|cap| cap.as_str());
         let source = caps
             .name("source")
             .map(|cap| cap.as_str())
@@ -571,19 +603,20 @@ pub fn replace_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMark
             "atk" => "".to_owned(),
             "scaledamage" => format!("*{}*", source),
             "dice" | "damage" => {
-                let roll_results = roll_results(arg).unwrap();
+                let roll_results = roll_results(arg1).unwrap();
                 let roll = roll_results.get(0).unwrap();
-                format!("*{}* `[{}]` ", arg, roll.total)
+                format!("*{}* `[{}]` ", arg1, roll.total)
             }
             _ => {
+                let nice_str = arg4.or(arg3).or(arg2).unwrap_or(arg1);
                 if let Some(item) = COMMANDS.get(cmd) {
                     keyboard.add_row(vec![InlineKeyboardButton::callback(
-                        format!("{}: {}", item.get_default_command(), arg),
-                        format!("{} {}", item.get_default_command(), arg),
+                        format!("{}: {}", item.get_default_command(), nice_str),
+                        format!("{} {}", item.get_default_command(), arg1),
                     )]);
-                    format!("_{}_ ", arg)
+                    format!("_{}_ ", nice_str)
                 } else {
-                    format!("_{}_ ", arg)
+                    format!("_{}_ ", nice_str)
                 }
             }
         }

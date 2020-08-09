@@ -10,6 +10,7 @@ lto   = true
 panic = 'abort'
 
 [dependencies]
+comfy-table      = { version = "1.0" }
 ejdb             = { version = "0.4" }
 futures          = { version = "0.3", default-features = false }
 hyper            = { version = "0.13", default-features = false }
@@ -19,7 +20,6 @@ lazy_static      = { version = "1.4" }
 log              = { version = "0.4", default-features = false }
 ordinal          = { version = "0.2" }
 percent-encoding = { version = "2.1" }
-prettytable-rs   = { version = "0.8" }
 prometheus       = { version = "0.9", default-features = false, features = ["process"] }
 rand             = { version = "0.7", default-features = false }
 regex            = { version = "1", default-features = false }

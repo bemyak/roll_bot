@@ -6,15 +6,16 @@ pub mod utils;
 
 use std::fmt::Write;
 
+use comfy_table::{presets::ASCII_NO_BORDERS, Cell, ContentArrangement, Row, Table};
 use ejdb::bson::Document;
 use ejdb::bson_crate::Bson;
-use prettytable::{Cell, Row, Table};
+use regex::Regex;
 
 pub trait Entry {
     fn get_name(&self) -> Option<String>;
     fn get_source(&self) -> Option<String>;
     fn get_entries(&self) -> Option<Vec<String>>;
-    // Very stupid formatting attempt
+    // Very naive formatting
     fn format(&self) -> String;
 }
 
@@ -24,7 +25,7 @@ impl Entry for Document {
     }
     fn get_source(&self) -> Option<String> {
         let source = self.get_str("source").ok()?;
-        let page = self.get_i32("page");
+        let page = self.get_i64("page");
         let srd = self.get_bool("srd");
 
         let mut result = format!("Source: {}", source);
@@ -117,9 +118,13 @@ fn format_entry(entry: &Bson) -> Option<String> {
                 }
 
                 let mut table = Table::new();
+                table
+                    .load_preset(ASCII_NO_BORDERS)
+                    .set_content_arrangement(ContentArrangement::Dynamic)
+                    .set_table_width(35);
 
                 if let Some(headers) = get_string_array(entry, "colLabels") {
-                    table.set_titles(Row::new(
+                    table.set_header(Row::from(
                         headers
                             .iter()
                             .map(|header| Cell::new(header))
@@ -129,12 +134,11 @@ fn format_entry(entry: &Bson) -> Option<String> {
 
                 entry.get_array("rows").ok()?.iter().for_each(|row| {
                     if let Bson::Array(array) = row {
-                        table.add_row(Row::new(
+                        table.add_row(Row::from(
                             array
                                 .iter()
                                 .filter_map(|cell| format_entry(cell))
-                                // TODO: shrink
-                                .map(|cell| cell)
+                                .map(|cell| demarkup(&cell))
                                 .map(|cell| Cell::new(&cell))
                                 .collect::<Vec<_>>(),
                         ));
@@ -146,9 +150,10 @@ fn format_entry(entry: &Bson) -> Option<String> {
             }
             "cell" => {
                 let roll = entry.get_document("roll").ok()?;
-                let min = roll.get_i32("min");
-                let max = roll.get_i32("max");
-                let exact = roll.get_i32("exact");
+
+                let min = roll.get_i64("min");
+                let max = roll.get_i64("max");
+                let exact = roll.get_i64("exact");
 
                 if let Ok(exact) = exact {
                     format!("{}", exact)
@@ -207,4 +212,22 @@ fn simple_format(bs: &Bson) -> String {
         Bson::I64(num) => format!("{}", num),
         _ => panic!("Unknown type: {:?}", bs.element_type()),
     }
+}
+
+fn demarkup(s: &str) -> String {
+    lazy_static! {
+        static ref BOLD: Regex = Regex::new(r"(.*)\*(.+)\*(.*)").unwrap();
+        static ref ITALIC: Regex = Regex::new(r"(.*)_(.+)_(.*)").unwrap();
+        static ref STRIKE: Regex = Regex::new(r"(.*)\~(.+)\~(.*)").unwrap();
+        static ref MONO: Regex = Regex::new(r"(.*)`(.+)`(.*)").unwrap();
+        static ref ROLL: Regex = Regex::new(r"(.*)\s*\[(.+)\](.*)").unwrap();
+    }
+
+    let s = BOLD.replace_all(&s, "$1$2$3");
+    let s = ITALIC.replace_all(&s, "$1$2$3");
+    let s = STRIKE.replace_all(&s, "$1$2$3");
+    let s = MONO.replace_all(&s, "$1$2$3");
+    let s = ROLL.replace_all(&s, "$1$2$3");
+
+    s.into()
 }

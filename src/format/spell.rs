@@ -15,7 +15,7 @@ pub trait Spell: Entry {
 
 impl Spell for Document {
     fn get_meta(&self) -> Option<String> {
-        let level = self.get_i32("level").ok()?;
+        let level = self.get_i64("level").ok()?;
         let level = Ordinal(level).to_string();
 
         let school = self.get_str("school");
@@ -45,20 +45,20 @@ impl Spell for Document {
     }
 
     fn get_casting_time(&self) -> Option<String> {
-        None
+        todo!()
     }
     fn get_range(&self) -> Option<String> {
-        None
+        todo!()
     }
     fn get_components(&self) -> Option<String> {
-        None
+        todo!()
     }
     fn get_duration(&self) -> Option<String> {
-        None
+        todo!()
     }
 
     fn get_at_higher_levels(&self) -> Option<Vec<String>> {
-        None
+        todo!()
     }
     fn format_spell(&self) -> Option<String> {
         Some(format!(
