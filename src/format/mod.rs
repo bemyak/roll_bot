@@ -28,7 +28,7 @@ impl Entry for Document {
         let page = self.get_i64("page");
         let srd = self.get_bool("srd");
 
-        let mut result = format!("Source: {}", source);
+        let mut result = format!("{}", source);
 
         if let Ok(page) = page {
             result.push_str(&format!(", page {}", page));
