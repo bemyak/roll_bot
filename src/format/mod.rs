@@ -1,4 +1,6 @@
+pub mod abbreviation;
 pub mod db;
+pub mod item;
 pub mod roll;
 pub mod spell;
 pub mod telegram;
@@ -14,8 +16,8 @@ use regex::Regex;
 pub trait Entry {
     fn get_name(&self) -> Option<String>;
     fn get_source(&self) -> Option<String>;
-    fn get_entries(&self) -> Option<Vec<String>>;
-    // Very naive formatting
+    fn get_entries(&self, key: &str) -> Option<Vec<String>>;
+    // Very naive formatting, mostly for debug
     fn format(&self) -> String;
 }
 
@@ -44,8 +46,8 @@ impl Entry for Document {
 
         Some(result)
     }
-    fn get_entries(&self) -> Option<Vec<String>> {
-        let entries = self.get_array("entries").ok()?;
+    fn get_entries(&self, key: &str) -> Option<Vec<String>> {
+        let entries = self.get_array(key).ok()?;
 
         let mut result = Vec::new();
 

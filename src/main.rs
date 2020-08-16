@@ -34,10 +34,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     task::spawn(async move { metrics::serve_metrics().await });
 
     // Use this while testing to avoid unnecessary loading 5e.tools
-    // let db = DndDatabase::new("./test_data/roll_bot.ejdb")?;
+    let db = DndDatabase::new("./test_data/roll_bot.ejdb")?;
 
     // Uncomment this when ready for production use
-    let db = DndDatabase::new("./roll_bot.ejdb")?;
+    // let db = DndDatabase::new("./roll_bot.ejdb")?;
     let fetch_db = db.clone();
     task::spawn(async move {
         fetch_job(fetch_db).await;
@@ -60,10 +60,12 @@ async fn fetch_job(mut db: DndDatabase) {
         match result {
             Ok(data) => {
                 for (collection, items) in data {
-                    db.save_collection(items, collection).unwrap_or_else(|err| {
-                        error!("Error occurred while saving data to DB: {}", err)
-                    });
+                    db.save_collection(items, &collection)
+                        .unwrap_or_else(|err| {
+                            error!("Error occurred while saving data to DB: {}", err)
+                        });
                 }
+                db.update_cache();
             }
             Err(err) => error!("Error occurred while fetching data: {}", err),
         }

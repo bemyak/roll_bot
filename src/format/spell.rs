@@ -9,7 +9,6 @@ pub trait Spell: Entry {
     fn get_range(&self) -> Option<String>;
     fn get_components(&self) -> Option<String>;
     fn get_duration(&self) -> Option<String>;
-    fn get_at_higher_levels(&self) -> Option<Vec<String>>;
 
     fn format_spell(&self) -> Option<String>;
 }
@@ -121,10 +120,6 @@ impl Spell for Document {
         }
     }
 
-    fn get_at_higher_levels(&self) -> Option<Vec<String>> {
-        None
-    }
-
     fn format_spell(&self) -> Option<String> {
         let mut s = format!("*{}*", self.get_name()?);
 
@@ -150,8 +145,12 @@ impl Spell for Document {
             s.push_str(&format!("\n*Duration*: {}", &duration));
         }
 
-        if let Some(entries) = self.get_entries() {
+        if let Some(entries) = self.get_entries("entries") {
             s.push_str(&format!("\n\n{}", &entries.join("\n")));
+        }
+
+        if let Some(entries_high_level) = self.get_entries("entriesHigherLevel") {
+            s.push_str(&format!("\n\n{}", &entries_high_level.join("\n")));
         }
 
         if let Some(source) = self.get_source() {

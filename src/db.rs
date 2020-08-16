@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::{mem, time::Instant};
 
 use ejdb::bson;
 use ejdb::bson::Bson;
@@ -16,12 +16,18 @@ use serde_json::Value as JsonValue;
 use simsearch::{SearchOptions, SimSearch};
 
 use crate::get_unix_time;
-use crate::metrics::{COLLECTION_ITEM_GAUGE, COLLECTION_TIMESTAMP_GAUGE};
+use crate::{
+    collection::{CollectionName, COLLECTION_NAMES},
+    metrics::{COLLECTION_ITEM_GAUGE, COLLECTION_TIMESTAMP_GAUGE},
+};
 
 // System table should start with an underscore, so they will not be treated like D&D data collections
 const LOG_COLLECTION_NAME: &'static str = "_log";
 
-pub struct DndDatabase(Arc<Mutex<Inner>>);
+pub struct DndDatabase {
+    pub cache: Arc<Mutex<HashMap<CollectionName, SimSearch<CollectionName>>>>,
+    inner: Arc<Mutex<Inner>>,
+}
 
 struct Inner {
     db: Database,
@@ -30,7 +36,10 @@ struct Inner {
 
 impl Clone for DndDatabase {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            inner: self.inner.clone(),
+            cache: self.cache.clone(),
+        }
     }
 }
 
@@ -44,10 +53,15 @@ impl DndDatabase {
             coll.index("user_id").number().set()?;
         }
 
-        Ok(DndDatabase(Arc::new(Mutex::new(Inner {
+        let inner = Inner {
             db: ejdb,
             timestamp: Instant::now(),
-        }))))
+        };
+
+        Ok(Self {
+            cache: Arc::new(Mutex::new(inner.get_cache())),
+            inner: Arc::new(Mutex::new(inner)),
+        })
     }
 
     pub fn save_collection(
@@ -55,11 +69,12 @@ impl DndDatabase {
         json: Vec<JsonValue>,
         collection: &str,
     ) -> Result<(), ejdb::Error> {
+        info!("Saving {}, {}", collection, json.len());
         let bs: Bson = serde_json::Value::Array(json).into();
         let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(
             format!("{} field is not an array", collection).to_owned(),
         ))?;
-        let mut inner = self.0.try_lock().unwrap();
+        let mut inner = self.inner.lock().unwrap();
         inner.timestamp = Instant::now();
         inner.db.drop_collection(collection, true)?;
         let coll = inner.db.collection(collection)?;
@@ -72,6 +87,8 @@ impl DndDatabase {
                 }
             });
         coll.index("name").string(false).set()?;
+        coll.index("abbreviation").string(true).set()?;
+        coll.index("appliesTo").string(true).set()?;
 
         COLLECTION_TIMESTAMP_GAUGE
             .with_label_values(&[collection])
@@ -84,19 +101,26 @@ impl DndDatabase {
         Ok(())
     }
 
+    pub fn update_cache(&self) {
+        let inner = self.inner.lock().unwrap();
+        let new_cache = inner.get_cache();
+        let mut cache = self.cache.lock().unwrap();
+        *cache = new_cache;
+    }
+
     pub fn get_update_timestamp(&self) -> Instant {
-        let inner = self.0.try_lock().unwrap();
+        let inner = self.inner.lock().unwrap();
         inner.timestamp
     }
 
     pub fn get_metadata(&self) -> Result<ejdb::meta::DatabaseMetadata, ejdb::Error> {
-        let inner = self.0.try_lock().unwrap();
+        let inner = self.inner.lock().unwrap();
         Ok(inner.db.get_metadata()?)
     }
 
     // This is terribly inefficient, but upstream EJDB bindings does not implement distinct queries :(
     pub fn get_all_massages(&self) -> Result<Vec<LogMessage>, ejdb::Error> {
-        let inner = self.0.try_lock().unwrap();
+        let inner = self.inner.lock().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
         Ok(coll
             .query(Q.empty(), QH.empty())
@@ -105,24 +129,6 @@ impl DndDatabase {
             .map(|doc| doc.try_into())
             .filter_map(Result::ok)
             .collect())
-    }
-
-    pub fn get_cache(&self) -> HashMap<String, SimSearch<String>> {
-        let inner = self.0.try_lock().unwrap();
-        let collections = DndDatabase::list_collections(&inner.db);
-        let mut result = HashMap::with_capacity(collections.len());
-        collections.into_iter().for_each(|collection| {
-            let mut engine = SimSearch::new_with(get_search_options());
-            DndDatabase::list_items(&inner.db, &collection)
-                .unwrap_or_default()
-                .into_iter()
-                .for_each(|item| {
-                    engine.insert(item.clone(), &item);
-                });
-
-            result.insert(collection, engine);
-        });
-        result
     }
 
     fn list_collections(db: &Database) -> Vec<String> {
@@ -153,11 +159,22 @@ impl DndDatabase {
         collection: &str,
         item_name: &str,
     ) -> Result<Option<bson::Document>, ejdb::Error> {
-        let inner = self.0.try_lock().unwrap();
+        let inner = self.inner.lock().unwrap();
         let coll = inner.db.collection(collection)?;
-        Ok(coll
-            .query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
-            .find_one()?)
+        coll.query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
+            .find_one()
+    }
+
+    pub fn find_one_by(
+        &self,
+        collection: &str,
+        field: &str,
+        value: &str,
+    ) -> Result<Option<bson::Document>, ejdb::Error> {
+        let inner = self.inner.lock().unwrap();
+        let coll = inner.db.collection(collection)?;
+        coll.query(Q.field("abbreviation").eq(value), QH.empty())
+            .find_one()
     }
 
     pub fn log_message(
@@ -182,7 +199,7 @@ impl DndDatabase {
         response: &Result<Option<String>, Box<dyn Error>>,
         latency: u64,
     ) -> Result<(), ejdb::Error> {
-        let inner = self.0.try_lock().unwrap();
+        let inner = self.inner.lock().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
 
         let mut default_response = String::new();
@@ -214,6 +231,28 @@ impl DndDatabase {
         coll.save(bson)?;
 
         Ok(())
+    }
+}
+
+impl Inner {
+    fn get_cache(&self) -> HashMap<CollectionName, SimSearch<CollectionName>> {
+        let mut result: HashMap<CollectionName, SimSearch<CollectionName>> =
+            HashMap::with_capacity(COLLECTION_NAMES.len());
+        COLLECTION_NAMES
+            .iter()
+            .for_each(|collection: &CollectionName| {
+                let collection = *collection;
+                let mut engine = SimSearch::new_with(get_search_options());
+                DndDatabase::list_items(&self.db, &collection)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .for_each(|item| {
+                        engine.insert(collection, &item);
+                    });
+
+                result.insert(collection, engine);
+            });
+        result
     }
 }
 
@@ -262,7 +301,7 @@ mod test {
     fn test_get_cache() {
         init();
         let db = DndDatabase::new(get_db_path()).unwrap();
-        let cache = db.get_cache();
+        let cache = db.cache.lock().unwrap();
         // info!("{:?}", cache);
         assert!(cache.len() > 0);
     }

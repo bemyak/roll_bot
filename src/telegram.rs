@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::sync::Mutex;
-use std::{borrow::Cow, cmp::min, convert::identity, mem, time::Instant};
+use std::{borrow::Cow, cmp::min, mem, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
@@ -20,9 +20,9 @@ use telegram_bot::{
 };
 use thiserror::Error;
 
-use crate::collection::{Collection, COMMANDS};
+use crate::collection::{Collection, COMMANDS, CollectionName};
 use crate::db::DndDatabase;
-use crate::format::{db::*, roll::*, spell::*, telegram::*, utils::*, Entry};
+use crate::format::{db::*, item::Item, roll::*, spell::*, telegram::*, utils::*, Entry};
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 use crate::PROJECT_URL;
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
@@ -55,7 +55,6 @@ pub struct Bot {
     db: DndDatabase,
     api: Api,
     me: User,
-    cache: Mutex<HashMap<String, SimSearch<String>>>,
 }
 
 impl Bot {
@@ -65,12 +64,11 @@ impl Bot {
             std::process::exit(1)
         });
 
-        let cache = Mutex::new(db.get_cache());
         let connector = get_connector();
         let api = Api::with_connector(token, connector);
         let me = api.send(GetMe).await?;
 
-        Ok(Self { db, api, me, cache })
+        Ok(Self { db, api, me })
     }
 
     pub async fn start(self) {
@@ -362,7 +360,7 @@ impl Bot {
                         .chat
                         .text(format!(
                             "What {} should I look for? Please, reply with a name:",
-                            lookup_item.get_default_collection()
+                            lookup_item.get_default_command()
                         ))
                         .reply_markup(force_reply),
                 )
@@ -374,9 +372,7 @@ impl Bot {
         let exact_match_result = lookup_item
             .collections
             .iter()
-            .map(|collection| self.db.get_item(collection, arg))
-            .filter_map(Result::ok)
-            .filter_map(identity)
+            .filter_map(|collection| self.db.get_item(collection, arg).ok().flatten())
             .next();
 
         match exact_match_result {
@@ -384,7 +380,9 @@ impl Bot {
                 let mut keyboard = InlineKeyboardMarkup::new();
                 replace_links(&mut item, &mut keyboard);
                 let msg = match lookup_item.type_ {
-                    crate::collection::CollectionType::Item => item.format(),
+                    crate::collection::CollectionType::Item => item
+                        .format_item(&self.db)
+                        .ok_or(BotError::EntryFormatError)?,
                     crate::collection::CollectionType::Monster => item.format(),
                     crate::collection::CollectionType::Spell => {
                         item.format_spell().ok_or(BotError::EntryFormatError)?
@@ -403,14 +401,14 @@ impl Bot {
                 let mut keyboard = InlineKeyboardMarkup::new();
                 let mut found = false;
 
-                let map = self.cache.try_lock().unwrap();
+                let map = self.db.cache.lock().unwrap();
 
-                for collection in lookup_item.collections.clone() {
+                for collection in lookup_item.collections {
                     let engine = map.get(collection).unwrap();
                     let results = engine.search(arg);
 
                     results.iter().for_each(|item| {
-                        let command = format!("{} {}", lookup_item.get_default_collection(), item);
+                        let command = format!("{} {}", lookup_item.get_default_command(), item);
                         let button = InlineKeyboardButton::callback(item.clone(), command);
 
                         found = true;
@@ -421,12 +419,12 @@ impl Bot {
                 let mut msg = if found {
                     format!(
                         "I don't have any {} with this exact name, but these looks similar:",
-                        lookup_item.get_default_collection()
+                        lookup_item.get_default_command()
                     )
                 } else {
                     format!(
                         "Can't find any {} with this name, sorry :(",
-                        lookup_item.get_default_collection()
+                        lookup_item.get_default_command()
                     )
                 };
 
@@ -585,10 +583,8 @@ fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardM
         let arg2 = caps.name("arg2").map(|cap| cap.as_str());
         let arg3 = caps.name("arg3").map(|cap| cap.as_str());
         let arg4 = caps.name("arg4").map(|cap| cap.as_str());
-        let source = caps
-            .name("source")
-            .map(|cap| cap.as_str())
-            .unwrap_or_default();
+
+        let nice_str = arg4.or(arg3).or(arg2).unwrap_or(arg1);
 
         match cmd {
             "h" => match caps.name("bonus") {
@@ -601,7 +597,7 @@ fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardM
                 None => "+".to_owned(),
             },
             "atk" => "".to_owned(),
-            "scaledamage" => format!("*{}*", source),
+            "scaledamage" => format!("*{}*", nice_str),
             "dice" | "damage" => {
                 let roll_results = roll_results(arg1).unwrap();
                 let roll = roll_results.get(0).unwrap();
