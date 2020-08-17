@@ -25,7 +25,7 @@ use crate::{
 const LOG_COLLECTION_NAME: &'static str = "_log";
 
 pub struct DndDatabase {
-    pub cache: Arc<Mutex<HashMap<CollectionName, SimSearch<CollectionName>>>>,
+    pub cache: Arc<Mutex<HashMap<CollectionName, SimSearch<String>>>>,
     inner: Arc<Mutex<Inner>>,
 }
 
@@ -234,8 +234,8 @@ impl DndDatabase {
 }
 
 impl Inner {
-    fn get_cache(&self) -> HashMap<CollectionName, SimSearch<CollectionName>> {
-        let mut result: HashMap<CollectionName, SimSearch<CollectionName>> =
+    fn get_cache(&self) -> HashMap<CollectionName, SimSearch<String>> {
+        let mut result: HashMap<CollectionName, SimSearch<String>> =
             HashMap::with_capacity(COLLECTION_NAMES.len());
         COLLECTION_NAMES
             .iter()
@@ -246,7 +246,7 @@ impl Inner {
                     .unwrap_or_default()
                     .into_iter()
                     .for_each(|item| {
-                        engine.insert(collection, &item);
+                        engine.insert(item.clone(), &item);
                     });
 
                 result.insert(collection, engine);
@@ -319,6 +319,17 @@ mod test {
         let i = db.get_item("spell", "Fireball").unwrap().unwrap();
         info!("{:#?}", i);
         info!("{}", i.format());
+    }
+
+    #[test]
+    fn test_cache() {
+        init();
+        let db = DndDatabase::new(get_db_path()).unwrap();
+        let cache = db.cache.lock().unwrap();
+        let engine = cache.get("spell").unwrap();
+        assert!(engine.search("fireball").len() > 0);
+        let engine = cache.get("item").unwrap();
+        assert!(engine.search("bag of").len() > 0);
     }
 
     fn get_db_path() -> &'static str {
