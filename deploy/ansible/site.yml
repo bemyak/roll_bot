@@ -1,49 +1,49 @@
 ---
-- hosts: monitor
-  vars:
-    public_dns_name: "{{ lookup('env','ROLLBOT_DNS_NAME') | default(monitor_public_ip) }}"
+# - hosts: monitor
+#   vars:
+#     public_dns_name: "{{ lookup('env','ROLLBOT_DNS_NAME') | default(monitor_public_ip) }}"
 
-  roles:
-    - role: firewall
-      allowed_ports:
-        - 80/tcp
-        - 443/tcp
+#   roles:
+#     - role: firewall
+#       allowed_ports:
+#         - 80/tcp
+#         - 443/tcp
 
-    - role: caddy
-      caddy_license: personal
-      caddy_update: yes
-      caddy_systemd_capabilities_enabled: yes
-      caddy_setcap: yes
-      caddy_config: |
-        {{ public_dns_name }}
-        gzip
-        tls {{ lookup('env','TLS_EMAIL') }}
-        basicauth /prometheus admin {{ lookup('env','ROLLBOT_ADMIN_PASS') }}
-        proxy /prometheus localhost:9090
-        proxy / localhost:3000
-      become: yes
+#     - role: caddy
+#       caddy_license: personal
+#       caddy_update: yes
+#       caddy_systemd_capabilities_enabled: yes
+#       caddy_setcap: yes
+#       caddy_config: |
+#         {{ public_dns_name }}
+#         gzip
+#         tls {{ lookup('env','TLS_EMAIL') }}
+#         basicauth /prometheus admin {{ lookup('env','ROLLBOT_ADMIN_PASS') }}
+#         proxy /prometheus localhost:9090
+#         proxy / localhost:3000
+#       become: yes
 
-    - role: prometheus
-      prometheus_web_listen_address: 127.0.0.1:9090
-      prometheus_web_external_url: "https://{{ public_dns_name }}/prometheus"
-      prometheus_scrape_configs:
-        - job_name: "rollbot"
-          metrics_path: /metrics
-          static_configs:
-            - targets:
-                - "{{ rollbot_private_ip }}:9889"
+#     - role: prometheus
+#       prometheus_web_listen_address: 127.0.0.1:9090
+#       prometheus_web_external_url: "https://{{ public_dns_name }}/prometheus"
+#       prometheus_scrape_configs:
+#         - job_name: "rollbot"
+#           metrics_path: /metrics
+#           static_configs:
+#             - targets:
+#                 - "{{ rollbot_private_ip }}:9889"
 
-    - role: grafana
-      grafana_url: "https://{{ public_dns_name }}"
-      grafana_security:
-        admin_user: "admin"
-        admin_password: "{{ lookup('env','ROLLBOT_ADMIN_PASS') }}"
-      grafana_datasources:
-        - name: "Prometheus"
-          type: "prometheus"
-          access: "proxy"
-          url: "http://localhost:9090/prometheus"
-          isDefault: true
+#     - role: grafana
+#       grafana_url: "https://{{ public_dns_name }}"
+#       grafana_security:
+#         admin_user: "admin"
+#         admin_password: "{{ lookup('env','ROLLBOT_ADMIN_PASS') }}"
+#       grafana_datasources:
+#         - name: "Prometheus"
+#           type: "prometheus"
+#           access: "proxy"
+#           url: "http://localhost:9090/prometheus"
+#           isDefault: true
 
 - hosts: rollbot
   roles:
