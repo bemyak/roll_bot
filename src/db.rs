@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::{mem, time::Instant};
+use std::time::Instant;
 
 use ejdb::bson;
 use ejdb::bson::Bson;
@@ -173,8 +173,7 @@ impl DndDatabase {
     ) -> Result<Option<bson::Document>, ejdb::Error> {
         let inner = self.inner.lock().unwrap();
         let coll = inner.db.collection(collection)?;
-        coll.query(Q.field("abbreviation").eq(value), QH.empty())
-            .find_one()
+        coll.query(Q.field(field).eq(value), QH.empty()).find_one()
     }
 
     pub fn log_message(

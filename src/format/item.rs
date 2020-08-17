@@ -1,0 +1,337 @@
+use super::{abbreviation::Abbreviation, cost_to_string, Capitalizable, Entry, FilterJoinable};
+use crate::db::DndDatabase;
+use ejdb::bson::{Bson, Document};
+use std::convert::identity;
+
+pub trait Item: Entry {
+    // we need database to expand abbreviations
+    fn format_item(&self, db: &DndDatabase) -> Option<String>;
+
+    fn get_type(&self) -> Option<String>;
+    fn get_attune(&self) -> Option<String>;
+    fn get_value(&self) -> Option<i64>;
+    fn get_carrying_capacity(&self) -> Option<i64>;
+    fn get_ac(&self) -> Option<i64>;
+    fn get_dmg1(&self) -> Option<String>;
+    fn get_dmg_type(&self) -> Option<String>;
+    fn get_speed(&self) -> Option<i64>;
+    fn get_bonus_ac(&self) -> Option<String>;
+    fn get_bonus_weapon_attack(&self) -> Option<String>;
+    fn get_pack_contents(&self) -> Option<Vec<String>>;
+    fn get_ammo_type(&self) -> Option<String>;
+    fn get_properties(&self) -> Option<Vec<String>>;
+    fn get_weight(&self) -> Option<i64>;
+    fn get_loot_tables(&self) -> Option<Vec<String>>;
+
+    // For abbreviations
+
+    // get_tags collects tags bellow
+    fn get_tags(&self, type_: &Option<String>, abbr: &Option<Document>) -> Option<Vec<String>>;
+    // simple, martial
+    fn get_weapon_category(&self) -> Option<String>;
+    fn get_tier(&self) -> Option<String>;
+    fn get_rarity(&self) -> Option<String>;
+}
+
+impl Item for Document {
+    fn format_item(&self, db: &DndDatabase) -> Option<String> {
+        let mut s = format!("*{}*", self.get_name()?);
+
+        let type_ = self.get_type();
+        let (type_abbreviation, type_additional_abbreviation) = if let Some(type_) = &type_ {
+            (
+                db.find_one_by("itemType", "abbreviation", &type_)
+                    .ok()
+                    .flatten(),
+                db.find_one_by("itemTypeAdditionalEntries", "appliesTo", &type_)
+                    .ok()
+                    .flatten(),
+            )
+        } else {
+            (None, None)
+        };
+
+        let properties = self.get_properties();
+        let property_abbreviations = if let Some(properties) = &properties {
+            properties
+                .iter()
+                .filter_map(|p| db.find_one_by("itemProperties", "abbreviation", p).ok())
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        let tags = self
+            .get_tags(&type_, &type_abbreviation)
+            .map(|t| t.join(", "));
+        let tier = self.get_tier().map(|t| format!("{} tier", t));
+        let rarity = self.get_rarity();
+
+        let meta = vec![tags, tier, rarity]
+            .filter_join(", ")
+            .map(|s| s.capitalize());
+        if let Some(meta) = meta {
+            s.push_str(&format!("\n_{}_", meta));
+        }
+
+        if let Some(attune) = self.get_attune() {
+            s.push_str(&format!("\n_{}_", attune.capitalize()));
+        }
+        if let Some(value) = self.get_value() {
+            s.push_str(&format!("\n\n*Cost*: {}", cost_to_string(value)));
+        }
+        if let Some(carrying_capacity) = self.get_carrying_capacity() {
+            s.push_str(&format!("\n*Carrying capacity*: {} lb.", carrying_capacity));
+        }
+        if let Some(ac) = self.get_ac() {
+            s.push_str(&format!("\n*AC*: {}", ac));
+        }
+        if let Some(dmg1) = self.get_dmg1() {
+            s.push_str(&format!("\n*Damage*: {}", dmg1));
+            if let Some(dmg_type) = self.get_dmg_type() {
+                s.push_str(&format!(" {}", dmg_type))
+            }
+        } else {
+            if let Some(dmg_type) = self.get_dmg_type() {
+                s.push_str(&format!("\n*Damage type*: {}", dmg_type))
+            }
+        }
+        if let Some(speed) = self.get_speed() {
+            s.push_str(&format!("\n*Speed*: {}", speed));
+        }
+
+        if let Some(weight) = self.get_weight() {
+            s.push_str(&format!("\n*Weight*: {} lb", weight));
+        }
+
+        if let Some(ammo_type) = self.get_ammo_type() {
+            s.push_str(&format!("\n*Ammo Type*: {}", ammo_type));
+        }
+
+        if let Some(bonus_ac) = self.get_bonus_ac() {
+            s.push_str(&format!("\n*AC Bonus*: {}", bonus_ac));
+        }
+        if let Some(bonus_weapon_attack) = self.get_bonus_weapon_attack() {
+            s.push_str(&format!("\n*Attack Bonus*: {}", bonus_weapon_attack));
+        }
+        if let Some(pack_contents) = self.get_pack_contents() {
+            s.push_str(&format!("\n*In pack*: {}", pack_contents.join(" ")));
+        }
+
+
+        if let Some(entries) = self.get_entries("entries") {
+            s.push_str(&format!("\n\n{}", &entries.join("\n")));
+        }
+        if let Some(entries) = type_abbreviation
+            .map(|t| t.get_entries("entries"))
+            .flatten()
+        {
+            s.push_str(&format!("\n\n{}", &entries.join("\n")));
+        }
+        if let Some(entries) = type_additional_abbreviation
+            .map(|t| t.get_entries("entries"))
+            .flatten()
+        {
+            s.push_str(&format!("\n\n{}", &entries.join("\n")));
+        }
+        for t in property_abbreviations {
+            if let Some(entries) = t.map(|t| t.get_entries("entries")).flatten() {
+                s.push_str(&format!("\n\n{}", &entries.join("\n")));
+            }
+        }
+
+        if let Some(loot_tables) = self.get_loot_tables() {
+            s.push_str(&format!("\n\n*Loot tables*: {}", loot_tables.join(" ")));
+        }
+        if let Some(source) = self.get_source() {
+            s.push_str(&format!("\n\n_{}_", source));
+        }
+
+        Some(s)
+    }
+    fn get_tags(&self, type_: &Option<String>, abbr: &Option<Document>) -> Option<Vec<String>> {
+        let mut tags = vec![self.get_weapon_category()];
+
+        let mut push_bool = |tag_name: &str| {
+            if let Some(tag) = self.get_bool(tag_name).ok() {
+                if tag {
+                    tags.push(Some(tag_name.to_string()))
+                }
+            }
+        };
+
+        push_bool("ammunition");
+        push_bool("axe");
+        push_bool("sword");
+        push_bool("firearm");
+        push_bool("staff");
+        push_bool("weapon");
+        push_bool("wondrous");
+        push_bool("tattoo");
+        push_bool("sentient");
+        push_bool("poison");
+
+        tags.push(expand_type_abbreviation(self, type_, abbr));
+
+        Some(tags.into_iter().filter_map(identity).collect())
+    }
+    fn get_rarity(&self) -> Option<String> {
+        self.get_str("rarity").ok().map(|rarity| match rarity {
+            "none" => "mundane".to_string(),
+            "unknown" => "miscellaneous mundane".to_string(),
+            "unknown (magic)" => "miscellaneous magical".to_string(),
+            _ => rarity.to_string(),
+        })
+    }
+    fn get_ac(&self) -> Option<i64> {
+        self.get_i64("ac").ok()
+    }
+    fn get_type(&self) -> Option<String> {
+        self.get_str("type").map(str::to_string).ok()
+    }
+    fn get_tier(&self) -> Option<String> {
+        self.get_str("tier").map(str::to_string).ok()
+    }
+    fn get_carrying_capacity(&self) -> Option<i64> {
+        self.get_i64("carryingCapacity").ok()
+    }
+    fn get_weight(&self) -> Option<i64> {
+        self.get_i64("weight").ok()
+    }
+    fn get_properties(&self) -> Option<Vec<String>> {
+        let properties = self.get_array("property").ok()?;
+        let properties = properties
+            .into_iter()
+            .filter_map(Bson::as_str)
+            .map(|t| t.to_string())
+            // .filter_map(|property| db.get_abbreviation("itemProperty", property).ok().flatten())
+            // .filter_map(|abbr| abbr.get_entries("entries"))
+            // .flatten()
+            .collect::<Vec<_>>();
+        if properties.len() == 0 {
+            None
+        } else {
+            Some(properties)
+        }
+    }
+    fn get_attune(&self) -> Option<String> {
+        let base = "requires attunement".to_string();
+        let b = self.get_bool("reqAttune").ok();
+        if let Some(b) = b {
+            if b {
+                return Some(base);
+            } else {
+                return None;
+            }
+        }
+
+        let s = self.get_str("reqAttune").ok()?;
+        Some(base + " " + s)
+    }
+    fn get_dmg1(&self) -> Option<String> {
+        self.get_str("dmg1").map(str::to_string).ok()
+    }
+    fn get_dmg_type(&self) -> Option<String> {
+        self.get_str("dmgType")
+            .map(|dmg_type| match dmg_type {
+                "B" => "bludgeoning",
+                "P" => "piercing",
+                "S" => "slashing",
+                "N" => "necrotic",
+                "O" => "force", // ?
+                "R" => "radiance",
+                _ => dmg_type,
+            })
+            .map(str::to_string)
+            .ok()
+    }
+    fn get_speed(&self) -> Option<i64> {
+        self.get_i64("speed").ok()
+    }
+    fn get_weapon_category(&self) -> Option<String> {
+        self.get_str("weaponCategory").map(str::to_string).ok()
+    }
+    fn get_value(&self) -> Option<i64> {
+        self.get_i64("value").ok()
+    }
+    fn get_loot_tables(&self) -> Option<Vec<String>> {
+        let properties = self.get_array("lootTables").ok()?;
+        let properties = properties
+            .into_iter()
+            .filter_map(Bson::as_str)
+            .map(|property| property.to_string())
+            .collect::<Vec<_>>();
+        if properties.len() == 0 {
+            None
+        } else {
+            Some(properties)
+        }
+    }
+    fn get_bonus_ac(&self) -> Option<String> {
+        self.get_str("bonusAc").map(str::to_string).ok()
+    }
+    fn get_bonus_weapon_attack(&self) -> Option<String> {
+        self.get_str("bonusWeaponAttack").map(str::to_string).ok()
+    }
+    fn get_pack_contents(&self) -> Option<Vec<String>> {
+        let properties = self.get_array("packContents").ok()?;
+        let properties = properties
+            .into_iter()
+            .filter_map(|pack| match pack {
+                Bson::String(s) => Some(s.to_string()),
+                Bson::Document(d) => {
+                    let quantity = d.get_i64("quantity").map(|i| format!("{}", i)).ok();
+                    let special = d.get_str("special").map(str::to_string).ok();
+                    let item = d.get_str("item").map(|s| format!("{{@item {}}}", s)).ok();
+                    vec![quantity, item, special].filter_join(" ")
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if properties.len() == 0 {
+            None
+        } else {
+            Some(properties)
+        }
+    }
+    fn get_ammo_type(&self) -> Option<String> {
+        self.get_str("ammoType")
+            .map(|at| format!("{{@item {}}}", at))
+            .ok()
+    }
+}
+
+fn expand_type_abbreviation(
+    item: &Document,
+    type_: &Option<String>,
+    abbr: &Option<Document>,
+) -> Option<String> {
+    let type_ = type_.as_ref()?;
+    if let Some(abbr) = abbr {
+        if let Some(expanded) = abbr.expand_abbreviation(item) {
+            return Some(expanded);
+        }
+    }
+    let fallback = match type_.as_ref() {
+        "R" => "ranged weapon",
+        "M" => "melee weapon",
+        "A" => "ammunition",
+        "S" => "shield",
+        "G" => "adventuring gear",
+        "$" => "treasure",
+        "P" => "potion",
+        "T" => "tools",
+        "LA" => "light armor",
+        "MA" => "medium armor",
+        "HA" => "heavy armor",
+        "OTH" => "other",
+        "FD" => "food and drink",
+        "INS" => "instrument",
+        "AT" => "artisan's Tools",
+        "GS" => "gaming set",
+        "TG" => "trade goods",
+        "SHP" => "sheep",
+        _ => type_,
+    };
+    return Some(fallback.to_string());
+}

@@ -1,7 +1,5 @@
-use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::sync::Mutex;
 use std::{borrow::Cow, cmp::min, mem, time::Instant};
 
 use futures::StreamExt;
@@ -9,7 +7,6 @@ use hyper::Client;
 use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_rustls::HttpsConnector;
 use regex::{Captures, Regex};
-use simsearch::SimSearch;
 use telegram_bot::{
     connector::{default_connector, hyper::HyperConnector, Connector},
     prelude::*,
@@ -20,7 +17,7 @@ use telegram_bot::{
 };
 use thiserror::Error;
 
-use crate::collection::{Collection, COMMANDS, CollectionName};
+use crate::collection::{Collection, COMMANDS};
 use crate::db::DndDatabase;
 use crate::format::{db::*, item::Item, roll::*, spell::*, telegram::*, utils::*, Entry};
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
