@@ -15,6 +15,7 @@ mod telegram;
 
 use std::error::Error;
 use std::{
+    env,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -36,15 +37,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     task::spawn(async move { metrics::serve_metrics().await });
 
-    // Use this while testing to avoid unnecessary loading 5e.tools
-    // let db = Arc::new(DndDatabase::new("./test_data/roll_bot.ejdb")?);
-
-    // Uncomment this when ready for production use
-    let db = Arc::new(DndDatabase::new("./roll_bot.ejdb")?);
-    let fetch_db = db.clone();
-    task::spawn(async move {
-        fetch_job(fetch_db).await;
-    });
+    let use_test_db = env::var("ROLL_BOT_USE_TEST_DB").is_ok();
+    let db = if use_test_db {
+        Arc::new(DndDatabase::new("./test_data/roll_bot.ejdb")?)
+    } else {
+        let db = Arc::new(DndDatabase::new("./roll_bot.ejdb")?);
+        let fetch_db = db.clone();
+        task::spawn(async move {
+            fetch_job(fetch_db).await;
+        });
+        db
+    };
 
     loop {
         let bot = telegram::Bot::new(db.clone()).await?;

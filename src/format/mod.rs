@@ -18,6 +18,7 @@ pub trait Entry {
     fn get_name(&self) -> Option<String>;
     fn get_source(&self) -> Option<String>;
     fn get_entries(&self, key: &str) -> Option<Vec<String>>;
+
     // Very naive formatting, mostly for debug
     fn format(&self) -> String;
 }
@@ -63,13 +64,8 @@ impl Entry for Document {
             }
         }
 
-        if !result.is_empty() {
-            Some(result)
-        } else {
-            None
-        }
+        result.to_option()
     }
-
     fn format(&self) -> String {
         let mut res = String::new();
         self.into_iter().for_each(|(k, v)| match k.as_ref() {
@@ -92,13 +88,47 @@ impl Entry for Document {
     }
 }
 
+pub trait EntryUtils: Entry {
+    fn get_string(&self, key: &str) -> Option<String>;
+    fn get_object_str_fields(&self, key: &str) -> Option<Vec<(String, String)>>;
+}
+impl EntryUtils for Document {
+    fn get_string(&self, key: &str) -> Option<String> {
+        self.get_str(key).map(|s| s.to_string()).ok()
+    }
+    fn get_object_str_fields(&self, key: &str) -> Option<Vec<(String, String)>> {
+        let doc = self.get_document(key).ok()?;
+        doc.into_iter()
+            .filter_map(|(k, v)| {
+                let v = v.as_str();
+                match v {
+                    Some(v) => Some((k.to_string(), v.to_string())),
+                    None => None,
+                }
+            })
+            .collect::<Vec<_>>()
+            .to_option()
+    }
+}
+
+pub trait EntryArrayUtils<T: ?Sized> {
+    fn get_array_of(&self, key: &str, f: fn(&Bson) -> Option<&T>) -> Option<Vec<&T>>;
+}
+impl<T: ?Sized> EntryArrayUtils<T> for Document {
+    fn get_array_of(&self, key: &str, f: fn(&Bson) -> Option<&T>) -> Option<Vec<&T>> {
+        let arr = self.get_array(key).ok()?;
+        let result = arr.into_iter().filter_map(|bs| f(bs)).collect::<Vec<_>>();
+        result.to_option()
+    }
+}
+
 fn format_entry(entry: &Bson) -> Option<String> {
     Some(match entry {
         Bson::String(entry) => entry.clone(),
         Bson::Document(entry) => match entry.get_str("type").ok()? {
             "list" => {
                 let mut list_result = String::new();
-                let items = get_string_array(entry, "items")?;
+                let items = entry.get_array_of("items", Bson::as_str)?;
 
                 for item in items {
                     list_result.push_str(&format!("• {}", item));
@@ -108,7 +138,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
             }
             "entries" => {
                 let name = entry.get_str("name").ok()?;
-                let entries = get_string_array(entry, "entries")?;
+                let entries = entry.get_array_of("entries", Bson::as_str)?;
 
                 format!("*{}*: {}", name, entries.join("\n"))
             }
@@ -126,7 +156,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
                     .set_content_arrangement(ContentArrangement::Dynamic)
                     .set_table_width(35);
 
-                if let Some(headers) = get_string_array(entry, "colLabels") {
+                if let Some(headers) = entry.get_array_of("colLabels", Bson::as_str) {
                     table.set_header(Row::from(
                         headers
                             .iter()
@@ -174,17 +204,6 @@ fn format_entry(entry: &Bson) -> Option<String> {
             return None;
         }
     })
-}
-
-fn get_string_array(doc: &Document, key: &str) -> Option<Vec<String>> {
-    let mut result = Vec::new();
-    let items = doc.get_array(key).ok()?;
-    for item in items {
-        if let Bson::String(entry) = item {
-            result.push(entry.clone());
-        }
-    }
-    Some(result)
 }
 
 fn simple_format(bs: &Bson) -> String {
@@ -283,17 +302,12 @@ where
     T: ToString,
 {
     fn filter_join(self, sep: &str) -> Option<String> {
-        let s = self
-            .into_iter()
+        self.into_iter()
             .filter_map(identity)
             .map(|t| t.to_string())
             .collect::<Vec<_>>()
-            .join(sep);
-        if s.is_empty() {
-            None
-        } else {
-            Some(s)
-        }
+            .join(sep)
+            .to_option()
     }
 }
 
@@ -307,6 +321,29 @@ impl Capitalizable for String {
         match c.next() {
             None => String::new(),
             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        }
+    }
+}
+
+pub trait Optionable: Sized {
+    fn to_option(self) -> Option<Self>;
+}
+
+impl Optionable for String {
+    fn to_option(self) -> Option<Self> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self)
+        }
+    }
+}
+impl<T> Optionable for Vec<T> {
+    fn to_option(self) -> Option<Self> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self)
         }
     }
 }

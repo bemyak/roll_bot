@@ -5,6 +5,7 @@
   Check the [rustup](https://rustup.rs/) project or install `rust` with your distribution's package manager (should include cargo as well)
 - `vscode` or `vscodium` with `rust-analyzer` extension
 - `ROLL_BOT_TOKEN` environment variable set. Get yours from the [BotFather](https://t.me/BotFather)
+- `ROLL_BOT_USE_TEST_DB` just set this environment variable to any value (e.g. `true`) to avoid unnecessary loading of 5e.tools
 
 > **NOTE:** After cloning the repo, please execute: `$> git update-index --skip-worktree ./test_data/*` to avoid committing test database
 

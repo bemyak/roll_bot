@@ -1,4 +1,4 @@
-use super::{Capitalizable, Entry, FilterJoinable};
+use super::{Capitalizable, Entry, FilterJoinable, Optionable};
 use ejdb::bson::Document;
 use ordinal::Ordinal;
 use std::convert::identity;
@@ -60,7 +60,7 @@ impl Spell for Document {
     fn get_casting_time(&self) -> Option<String> {
         let times = self.get_array("time").ok()?;
 
-        let s = times
+        times
             .into_iter()
             .map(|time| time.as_document())
             .filter_map(identity)
@@ -72,13 +72,8 @@ impl Spell for Document {
                 vec![number, unit, condition].filter_join(" ")
             })
             .collect::<Vec<_>>()
-            .join(", ");
-
-        if s.is_empty() {
-            None
-        } else {
-            Some(s)
-        }
+            .join(", ")
+            .to_option()
     }
 
     fn get_range(&self) -> Option<String> {
@@ -106,18 +101,13 @@ impl Spell for Document {
     fn get_duration(&self) -> Option<String> {
         let durations = self.get_array("duration").ok()?;
 
-        let durations = durations
+        durations
             .into_iter()
             .filter_map(|bs| bs.as_document())
             .filter_map(|doc| get_duration(doc))
             .collect::<Vec<_>>()
-            .join(", ");
-
-        if durations.is_empty() {
-            None
-        } else {
-            Some(durations)
-        }
+            .join(", ")
+            .to_option()
     }
 
     fn format_spell(&self) -> Option<String> {
