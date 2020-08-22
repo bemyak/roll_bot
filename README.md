@@ -5,9 +5,9 @@ Telegram Bot for D&D 5e players.
 
 Implemented features:
 - [X] Roll a die
-- [ ] Search for spell reference
-- [ ] Search for monster reference
-- [ ] Search for items reference
+- [X] Search for spell reference
+- [X] Search for monster reference
+- [X] Search for items reference
 
 ## Before launch
 The only thing needed to get the bot running is to set `ROLL_BOT_TOKEN` environment variable. You can obtain this token from the [BotFather](https://t.me/BotFather)

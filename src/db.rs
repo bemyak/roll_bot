@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::time::Instant;
 
 use ejdb::bson;
@@ -25,23 +24,17 @@ use crate::{
 const LOG_COLLECTION_NAME: &'static str = "_log";
 
 pub struct DndDatabase {
-    pub cache: Arc<Mutex<HashMap<CollectionName, SimSearch<String>>>>,
-    inner: Arc<Mutex<Inner>>,
+    pub cache: RwLock<HashMap<CollectionName, SimSearch<String>>>,
+    inner: RwLock<Inner>,
 }
+// The EJDB's raw pointer won't change during our mutations
+unsafe impl Sync for Inner {}
 
 struct Inner {
     db: Database,
     timestamp: Instant,
 }
 
-impl Clone for DndDatabase {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            cache: self.cache.clone(),
-        }
-    }
-}
 
 impl DndDatabase {
     pub fn new(path: &str) -> Result<DndDatabase, ejdb::Error> {
@@ -59,13 +52,13 @@ impl DndDatabase {
         };
 
         Ok(Self {
-            cache: Arc::new(Mutex::new(inner.get_cache())),
-            inner: Arc::new(Mutex::new(inner)),
+            cache: RwLock::new(inner.get_cache()),
+            inner: RwLock::new(inner),
         })
     }
 
     pub fn save_collection(
-        &mut self,
+        &self,
         json: Vec<JsonValue>,
         collection: &str,
     ) -> Result<(), ejdb::Error> {
@@ -74,7 +67,7 @@ impl DndDatabase {
         let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(
             format!("{} field is not an array", collection).to_owned(),
         ))?;
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.write().unwrap();
         inner.timestamp = Instant::now();
         inner.db.drop_collection(collection, true)?;
         let coll = inner.db.collection(collection)?;
@@ -102,25 +95,25 @@ impl DndDatabase {
     }
 
     pub fn update_cache(&self) {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.read().unwrap();
         let new_cache = inner.get_cache();
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.write().unwrap();
         *cache = new_cache;
     }
 
     pub fn get_update_timestamp(&self) -> Instant {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.read().unwrap();
         inner.timestamp
     }
 
     pub fn get_metadata(&self) -> Result<ejdb::meta::DatabaseMetadata, ejdb::Error> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.read().unwrap();
         Ok(inner.db.get_metadata()?)
     }
 
     // This is terribly inefficient, but upstream EJDB bindings does not implement distinct queries :(
     pub fn get_all_massages(&self) -> Result<Vec<LogMessage>, ejdb::Error> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.read().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
         Ok(coll
             .query(Q.empty(), QH.empty())
@@ -159,7 +152,7 @@ impl DndDatabase {
         collection: &str,
         item_name: &str,
     ) -> Result<Option<bson::Document>, ejdb::Error> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.read().unwrap();
         let coll = inner.db.collection(collection)?;
         coll.query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
             .find_one()
@@ -171,7 +164,7 @@ impl DndDatabase {
         field: &str,
         value: &str,
     ) -> Result<Option<bson::Document>, ejdb::Error> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.read().unwrap();
         let coll = inner.db.collection(collection)?;
         coll.query(Q.field(field).eq(value), QH.empty()).find_one()
     }
@@ -198,7 +191,7 @@ impl DndDatabase {
         response: &Result<Option<String>, Box<dyn Error>>,
         latency: u64,
     ) -> Result<(), ejdb::Error> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.read().unwrap();
         let coll = inner.db.collection(LOG_COLLECTION_NAME)?;
 
         let mut default_response = String::new();
@@ -224,8 +217,6 @@ impl DndDatabase {
             "response" => response,
             "latency" => latency
         };
-
-        trace!("{}", bson);
 
         coll.save(bson)?;
 
@@ -300,9 +291,7 @@ mod test {
     fn test_get_cache() {
         init();
         let db = DndDatabase::new(get_db_path()).unwrap();
-        let cache = db.cache.lock().unwrap();
-        // info!("{:?}", cache);
-        assert!(cache.len() > 0);
+        assert!(db.cache.read().unwrap().len() > 0);
     }
 
     #[test]
@@ -325,7 +314,7 @@ mod test {
     fn test_cache() {
         init();
         let db = DndDatabase::new(get_db_path()).unwrap();
-        let cache = db.cache.lock().unwrap();
+        let cache = db.cache.read().unwrap();
         let engine = cache.get("spell").unwrap();
         assert!(engine.search("fireball").len() > 0);
         let engine = cache.get("item").unwrap();

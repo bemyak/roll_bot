@@ -118,7 +118,6 @@ impl Item for Document {
             s.push_str(&format!("\n*In pack*: {}", pack_contents.join(" ")));
         }
 
-
         if let Some(entries) = self.get_entries("entries") {
             s.push_str(&format!("\n\n{}", &entries.join("\n")));
         }
@@ -234,12 +233,19 @@ impl Item for Document {
     fn get_dmg_type(&self) -> Option<String> {
         self.get_str("dmgType")
             .map(|dmg_type| match dmg_type {
+                "A" => "acid",
                 "B" => "bludgeoning",
-                "P" => "piercing",
-                "S" => "slashing",
+                "C" => "cold",
+                "F" => "fire",
+                "O" => "force",
+                "L" => "lightning",
                 "N" => "necrotic",
-                "O" => "force", // ?
-                "R" => "radiance",
+                "P" => "piercing",
+                "I" => "poison",
+                "Y" => "psychic",
+                "R" => "radiant",
+                "S" => "slashing",
+                "T" => "thunder",
                 _ => dmg_type,
             })
             .map(str::to_string)
@@ -313,24 +319,38 @@ fn expand_type_abbreviation(
         }
     }
     let fallback = match type_.as_ref() {
-        "R" => "ranged weapon",
-        "M" => "melee weapon",
         "A" => "ammunition",
-        "S" => "shield",
-        "G" => "adventuring gear",
-        "$" => "treasure",
-        "P" => "potion",
-        "T" => "tools",
-        "LA" => "light armor",
-        "MA" => "medium armor",
-        "HA" => "heavy armor",
-        "OTH" => "other",
+        "AF" => "ammunition",
+        "AT" => "artisan's tools",
+        "EM" => "eldritch machine",
+        "EXP" => "explosive",
         "FD" => "food and drink",
-        "INS" => "instrument",
-        "AT" => "artisan's Tools",
+        "G" => "adventuring gear",
         "GS" => "gaming set",
-        "TG" => "trade goods",
-        "SHP" => "sheep",
+        "HA" => "heavy armor",
+        "INS" => "instrument",
+        "LA" => "light armor",
+        "M" => "melee weapon",
+        "MA" => "medium armor",
+        "MNT" => "mount",
+        "MR" => "master rune",
+        "GV" => "generic variant",
+        "P" => "potion",
+        "R" => "ranged weapon",
+        "RD" => "rod",
+        "RG" => "ring",
+        "S" => "shield",
+        "SC" => "scroll",
+        "SCF" => "spellcasting focus",
+        "OTH" => "other",
+        "T" => "tools",
+        "TAH" => "tack and harness",
+        "TG" => "trade good",
+        "$" => "treasure",
+        "VEH" => "vehicle (land)",
+        "SHP" => "vehicle (water)",
+        "AIR" => "vehicle (air)",
+        "WD" => "wand",
         _ => type_,
     };
     return Some(fallback.to_string());

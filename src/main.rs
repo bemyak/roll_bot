@@ -14,7 +14,10 @@ mod metrics;
 mod telegram;
 
 use std::error::Error;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 #[allow(unused_imports)]
 use tokio::task;
@@ -34,10 +37,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     task::spawn(async move { metrics::serve_metrics().await });
 
     // Use this while testing to avoid unnecessary loading 5e.tools
-    // let db = DndDatabase::new("./test_data/roll_bot.ejdb")?;
+    // let db = Arc::new(DndDatabase::new("./test_data/roll_bot.ejdb")?);
 
     // Uncomment this when ready for production use
-    let db = DndDatabase::new("./roll_bot.ejdb")?;
+    let db = Arc::new(DndDatabase::new("./roll_bot.ejdb")?);
     let fetch_db = db.clone();
     task::spawn(async move {
         fetch_job(fetch_db).await;
@@ -50,7 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn fetch_job(mut db: DndDatabase) {
+async fn fetch_job(db: Arc<DndDatabase>) {
     let mut interval = time::interval(Duration::from_secs(60 * 60 * 24));
 
     loop {

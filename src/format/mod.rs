@@ -1,6 +1,7 @@
 pub mod abbreviation;
 pub mod db;
 pub mod item;
+pub mod monster;
 pub mod roll;
 pub mod spell;
 pub mod telegram;

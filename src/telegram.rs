@@ -1,6 +1,6 @@
 use std::env;
 use std::error::Error;
-use std::{borrow::Cow, cmp::min, mem, time::Instant};
+use std::{borrow::Cow, cmp::min, mem, sync::Arc, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
@@ -19,7 +19,9 @@ use thiserror::Error;
 
 use crate::collection::{Collection, COMMANDS};
 use crate::db::DndDatabase;
-use crate::format::{db::*, item::Item, roll::*, spell::*, telegram::*, utils::*, Entry};
+use crate::format::{
+    db::*, item::Item, monster::Monster, roll::*, spell::*, telegram::*, utils::*,
+};
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 use crate::PROJECT_URL;
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
@@ -49,13 +51,13 @@ pub enum BotError {
 }
 
 pub struct Bot {
-    db: DndDatabase,
+    db: Arc<DndDatabase>,
     api: Api,
     me: User,
 }
 
 impl Bot {
-    pub async fn new(db: DndDatabase) -> Result<Self, BotError> {
+    pub async fn new(db: Arc<DndDatabase>) -> Result<Self, BotError> {
         let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
             error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
             std::process::exit(1)
@@ -73,8 +75,6 @@ impl Bot {
         let mut stream = self.api.stream();
 
         while let Some(Ok(update)) = stream.next().await {
-            trace!("Received message: {:#?}", update);
-
             let result = match &update.kind {
                 UpdateKind::Message(msg) => self.process_message(msg).await,
                 UpdateKind::EditedMessage(_) => Ok(()),
@@ -377,14 +377,11 @@ impl Bot {
                 let mut keyboard = InlineKeyboardMarkup::new();
                 replace_links(&mut item, &mut keyboard);
                 let msg = match lookup_item.type_ {
-                    crate::collection::CollectionType::Item => item
-                        .format_item(&self.db)
-                        .ok_or(BotError::EntryFormatError)?,
-                    crate::collection::CollectionType::Monster => item.format(),
-                    crate::collection::CollectionType::Spell => {
-                        item.format_spell().ok_or(BotError::EntryFormatError)?
-                    }
-                };
+                    crate::collection::CollectionType::Item => item.format_item(&self.db),
+                    crate::collection::CollectionType::Monster => item.format_monster(),
+                    crate::collection::CollectionType::Spell => item.format_spell(),
+                }
+                .ok_or(BotError::EntryFormatError)?;
                 self.split_and_send(
                     message,
                     &msg,
@@ -398,10 +395,9 @@ impl Bot {
                 let mut keyboard = InlineKeyboardMarkup::new();
                 let mut found = false;
 
-                let map = self.db.cache.lock().unwrap();
-
                 for collection in lookup_item.collections {
-                    let engine = map.get(collection).unwrap();
+                    let cache = self.db.cache.read().unwrap();
+                    let engine = cache.get(collection).unwrap();
                     let results = engine.search(arg);
 
                     results.iter().for_each(|item| {
