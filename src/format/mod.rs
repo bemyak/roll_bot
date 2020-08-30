@@ -18,6 +18,7 @@ pub trait Entry {
     fn get_name(&self) -> Option<String>;
     fn get_source(&self) -> Option<String>;
     fn get_entries(&self, key: &str) -> Option<Vec<String>>;
+    fn get_named_entries(&self, key: &str) -> Option<String>;
 
     // Very naive formatting, mostly for debug
     fn format(&self) -> String;
@@ -66,6 +67,19 @@ impl Entry for Document {
 
         result.to_option()
     }
+    fn get_named_entries(&self, key: &str) -> Option<String> {
+        let entries = self.get_array_of(key, Bson::as_document)?;
+        entries
+            .into_iter()
+            .filter_map(|t| {
+                let name = t.get_str("name").map(|s| format!("*{}*:", s)).ok();
+                let entries = t.get_entries("entries").map(|entries| entries.join("\n"));
+                vec![name, entries].filter_join(" ")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            .to_option()
+    }
     fn format(&self) -> String {
         let mut res = String::new();
         self.into_iter().for_each(|(k, v)| match k.as_ref() {
@@ -82,7 +96,7 @@ impl Entry for Document {
                 };
                 write!(&mut res, "\n{}\n\n", s).unwrap()
             }
-            _ => write!(&mut res, "*{}*: {}\n", k, simple_format(v)).unwrap(),
+            _ => writeln!(&mut res, "*{}*: {}", k, simple_format(v)).unwrap(),
         });
         res
     }
@@ -127,14 +141,12 @@ fn format_entry(entry: &Bson) -> Option<String> {
         Bson::String(entry) => entry.clone(),
         Bson::Document(entry) => match entry.get_str("type").ok()? {
             "list" => {
-                let mut list_result = String::new();
                 let items = entry.get_array_of("items", Bson::as_str)?;
-
-                for item in items {
-                    list_result.push_str(&format!("• {}", item));
-                }
-
-                list_result
+                items
+                    .into_iter()
+                    .map(|s| format!("• {}", s))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             }
             "entries" => {
                 let name = entry.get_str("name").ok()?;

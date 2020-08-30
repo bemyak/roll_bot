@@ -5,7 +5,7 @@ use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use prometheus::{Encoder, HistogramVec, IntCounterVec, IntGaugeVec, TextEncoder};
 
 pub const METRICS_PORT: u16 = 9889;
-pub const METRICS_ENDPOINT: &'static str = "/metrics";
+pub const METRICS_ENDPOINT: &str = "/metrics";
 
 lazy_static! {
     // Metric collectors

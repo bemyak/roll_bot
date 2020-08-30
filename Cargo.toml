@@ -10,7 +10,7 @@ lto   = true
 panic = 'abort'
 
 [dependencies]
-comfy-table      = { version = "1.0" }
+comfy-table      = { version = "1.1" }
 ejdb             = { version = "0.4" }
 futures          = { version = "0.3", default-features = false }
 hyper            = { version = "0.13", default-features = false }

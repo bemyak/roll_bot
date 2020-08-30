@@ -21,7 +21,7 @@ use crate::{
 };
 
 // System table should start with an underscore, so they will not be treated like D&D data collections
-const LOG_COLLECTION_NAME: &'static str = "_log";
+const LOG_COLLECTION_NAME: &str = "_log";
 
 pub struct DndDatabase {
     pub cache: RwLock<HashMap<CollectionName, SimSearch<String>>>,
@@ -34,7 +34,6 @@ struct Inner {
     db: Database,
     timestamp: Instant,
 }
-
 
 impl DndDatabase {
     pub fn new(path: &str) -> Result<DndDatabase, ejdb::Error> {
@@ -64,9 +63,10 @@ impl DndDatabase {
     ) -> Result<(), ejdb::Error> {
         info!("Saving {}, {}", collection, json.len());
         let bs: Bson = serde_json::Value::Array(json).into();
-        let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(
-            format!("{} field is not an array", collection).to_owned(),
-        ))?;
+        let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(format!(
+            "{} field is not an array",
+            collection
+        )))?;
         let mut inner = self.inner.write().unwrap();
         inner.timestamp = Instant::now();
         inner.db.drop_collection(collection, true)?;
@@ -129,7 +129,7 @@ impl DndDatabase {
             .unwrap()
             .collections()
             .map(|coll| coll.name().to_owned())
-            .filter(|coll| !coll.starts_with("_"))
+            .filter(|coll| !coll.starts_with('_'))
             .collect::<Vec<_>>()
     }
 

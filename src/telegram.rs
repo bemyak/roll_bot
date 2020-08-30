@@ -580,6 +580,7 @@ fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardM
         let nice_str = arg4.or(arg3).or(arg2).unwrap_or(arg1);
 
         match cmd {
+            "i" => format!("• {}", nice_str),
             "h" => match caps.name("bonus") {
                 Some(bonus) => {
                     let bonus = bonus.as_str();

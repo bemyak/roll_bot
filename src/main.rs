@@ -26,7 +26,7 @@ use tokio::time;
 
 use db::DndDatabase;
 
-pub const PROJECT_URL: &'static str = "https://gitlab.com/bemyak/roll_bot";
+pub const PROJECT_URL: &str = "https://gitlab.com/bemyak/roll_bot";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

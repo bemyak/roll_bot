@@ -91,10 +91,8 @@ impl Item for Document {
             if let Some(dmg_type) = self.get_dmg_type() {
                 s.push_str(&format!(" {}", dmg_type))
             }
-        } else {
-            if let Some(dmg_type) = self.get_dmg_type() {
-                s.push_str(&format!("\n*Damage type*: {}", dmg_type))
-            }
+        } else if let Some(dmg_type) = self.get_dmg_type() {
+            s.push_str(&format!("\n*Damage type*: {}", dmg_type))
         }
         if let Some(speed) = self.get_speed() {
             s.push_str(&format!("\n*Speed*: {}", speed));
@@ -353,5 +351,5 @@ fn expand_type_abbreviation(
         "WD" => "wand",
         _ => type_,
     };
-    return Some(fallback.to_string());
+    Some(fallback.to_string())
 }

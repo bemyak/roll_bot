@@ -26,7 +26,7 @@ pub enum CollectionType {
     Monster,
 }
 
-pub const COLLECTIONS: &'static [Collection] = &[
+pub const COLLECTIONS: &[Collection] = &[
     Collection {
         commands: &["item", "i"],
         urls: &["items"],
@@ -70,7 +70,7 @@ lazy_static! {
             .iter()
             .map(|c| c.collections)
             .flatten()
-            .map(|u| *u)
+            .copied()
             .collect::<Vec<_>>()
         };
 }
