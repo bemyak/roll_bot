@@ -47,7 +47,7 @@ pub const COLLECTIONS: &[Collection] = &[
     },
     Collection {
         commands: &["monster", "m"],
-        urls: &["bestiary"],
+        urls: &["bestiary", "bestiary/legendarygroups.json"],
         collections: &["monster"],
         type_: CollectionType::Monster,
     },

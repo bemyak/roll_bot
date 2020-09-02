@@ -63,18 +63,23 @@ pub async fn fetch() -> Result<HashMap<String, Vec<JsonValue>>, Box<dyn Error + 
 }
 
 async fn download(url: String) -> Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>> {
-    let file_url = url.clone() + EXTENSION;
+    let is_file = url.ends_with(EXTENSION);
+    let file_url = if !is_file {
+        url.clone() + EXTENSION
+    } else {
+        url.clone()
+    };
 
     let response = reqwest::get(&file_url).await?;
 
-    match response.status() {
-        reqwest::StatusCode::OK => {
+    match (is_file, response.status()) {
+        (_, reqwest::StatusCode::OK) => {
             info!("Successfully get url: {}", file_url);
             let text = response.text().await?;
             let json: JsonValue = serde_json::from_str(&text)?;
             Ok(vec![json])
         }
-        reqwest::StatusCode::NOT_FOUND => download_indexed(url).await,
+        (false, reqwest::StatusCode::NOT_FOUND) => download_indexed(url).await,
         _ => Err::<_, Box<dyn Error + Send + Sync>>(Box::new(FetchError {
             url: file_url,
             desc: format!("Unexpected status code: {}", response.status()),
@@ -98,18 +103,11 @@ fn download_indexed(
         let children = join_all(
             index
                 .values()
-                .map(|file| download(url.clone() + "/" + remove_extension(file)))
+                .map(|file| download(url.clone() + "/" + file))
                 .collect::<Vec<_>>(),
         )
         .await;
         Ok(children.into_iter().flatten().flatten().collect::<Vec<_>>())
     }
     .boxed()
-}
-
-fn remove_extension(s: &str) -> &str {
-    match s.rfind(".json") {
-        Some(i) => &s[..i],
-        None => s,
-    }
 }

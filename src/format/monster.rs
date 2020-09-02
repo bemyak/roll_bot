@@ -1,13 +1,14 @@
 use super::{Capitalizable, Entry, EntryArrayUtils, EntryUtils, FilterJoinable, Optionable};
+use crate::db::DndDatabase;
 use ejdb::bson::{Bson, Document};
 use ordinal::Ordinal;
 
 pub trait Monster: Entry {
-    fn format_monster(&self) -> Option<String>;
+    fn format_monster(&self, db: &DndDatabase) -> Option<String>;
 }
 
 impl Monster for Document {
-    fn format_monster(&self) -> Option<String> {
+    fn format_monster(&self, db: &DndDatabase) -> Option<String> {
         let name = self.get_short_name().or(self.get_name())?;
         let mut result = format!("*{}*", name);
 
@@ -26,7 +27,6 @@ impl Monster for Document {
         if let Some(meta) = meta {
             result.push_str(&format!("\n_{}_", meta));
         }
-
         if let Some(ac) = self.get_ac() {
             result.push_str(&format!("\n*AC*: {}", ac));
         }
@@ -36,7 +36,6 @@ impl Monster for Document {
         if let Some(speed) = self.get_speed() {
             result.push_str(&format!("\n*Speed*: {}", speed));
         }
-
         if let Some(strength) = self.get_strength() {
             result.push_str(&format!("\n*Str*: {}", strength));
         }
@@ -52,7 +51,6 @@ impl Monster for Document {
         if let Some(cha) = self.get_cha() {
             result.push_str(&format!("\t*Cha*: {}", cha));
         }
-
         if let Some(val) = self.get_save() {
             result.push_str(&format!("\n*Saving Throws*: {}", val));
         }
@@ -80,31 +78,33 @@ impl Monster for Document {
         if let Some(val) = self.get_condition_immune() {
             result.push_str(&format!("\n*Condition Immunity*: {}", val));
         }
-        if let Some(val) = self.get_spellcasting() {
-            result.push_str(&format!("\n{}", val));
-        }
         if let Some(val) = self.get_trait() {
-            result.push_str(&format!("\n{}", val));
+            result.push_str(&format!("\n\n{}", val));
+        }
+        if let Some(val) = self.get_spellcasting() {
+            result.push_str(&format!("\n\n{}", val));
         }
         if let Some(val) = self.get_action() {
-            result.push_str(&format!("\n{}", val));
+            result.push_str(&format!("\n\n*Actions*\n{}", val));
         }
         if let Some(val) = self.get_reaction() {
-            result.push_str(&format!("\n{}", val));
-        }
-        if let Some(val) = self.get_legendary_actions_num() {
-            result.push_str(&format!("\nNumber of Legendary Actions{}", val));
-        }
-        if let Some(val) = self.get_legendary_header() {
-            result.push_str(&format!("\n{}", val.join("\n")));
+            result.push_str(&format!("\n\n*Reactions*\n{}", val));
         }
         if let Some(val) = self.get_legendary() {
+            result.push_str("\n\n*Legendary Actions*\n");
+            if let Some(val) = self.get_legendary_header() {
+                result.push_str(&format!("{}", val.join("\n")));
+            }
             result.push_str(&format!("\n{}", val));
         }
         if let Some(val) = self.get_legendary_group() {
-            result.push_str(&format!("\nTODO: {}", val));
+            let legendary_actions = db.get_item("legendaryGroup", &val).ok().flatten();
+            if let Some(val) = legendary_actions {
+                if let Some(val) = val.format_legendary_group() {
+                    result.push_str(&format!("\n\n{}", val));
+                }
+            }
         }
-
         Some(result)
     }
 }
@@ -140,7 +140,6 @@ trait MonsterPrivate: Monster {
     fn get_action(&self) -> Option<String>;
     fn get_reaction(&self) -> Option<String>;
     fn get_legendary_group(&self) -> Option<String>;
-    fn get_legendary_actions_num(&self) -> Option<i64>;
     fn get_legendary_header(&self) -> Option<Vec<String>>;
     fn get_legendary(&self) -> Option<String>;
 }
@@ -329,13 +328,19 @@ impl MonsterPrivate for Document {
         self.get_named_entries("reaction")
     }
     fn get_legendary_group(&self) -> Option<String> {
-        self.get_string("legendaryGroup")
-    }
-    fn get_legendary_actions_num(&self) -> Option<i64> {
-        self.get_i64("legendaryActions").ok()
+        self.get_document("legendaryGroup")
+            .ok()
+            .map(|doc| doc.get_string("name"))
+            .flatten()
     }
     fn get_legendary_header(&self) -> Option<Vec<String>> {
-        self.get_entries("legendaryHeader")
+        let name = self.get_name().unwrap_or("It".to_string());
+        let num = self.get_i64("legendaryActions").unwrap_or(3);
+        self.get_entries("legendaryHeader").or(Some(vec![format!(
+            "{0} can take {1} legendary actions, choosing from the options below. Only one legendary action can be used at a time and only at the end of another creature's turn. {0} regains spent legendary actions at the start of its turn.",
+            name,
+            num
+        )]))
     }
     fn get_legendary(&self) -> Option<String> {
         self.get_named_entries("legendary")
@@ -350,6 +355,7 @@ trait MonsterUtils: Monster {
     fn format_spell_frequency(&self, key: &str) -> Option<Vec<String>>;
     fn format_spells(&self, key: &str) -> Option<Vec<String>>;
     fn format_spellcasting(&self) -> Option<String>;
+    fn format_legendary_group(&self) -> Option<String>;
     fn get_stat(&self, stat: &str) -> Option<String>;
 }
 
@@ -445,7 +451,7 @@ impl MonsterUtils for Document {
 
                         match slots {
                             Some(1) => result.push_str("(1 slot) "),
-                            Some(slots) => result.push_str(&format!("({} slots )", slots)),
+                            Some(slots) => result.push_str(&format!("({} slots) ", slots)),
                             None => {}
                         }
 
@@ -501,6 +507,24 @@ impl MonsterUtils for Document {
         }
 
         Some(result)
+    }
+    fn format_legendary_group(&self) -> Option<String> {
+        let lair = self.get_entries("lairActions");
+        let regional = self.get_entries("regionalEffects");
+        let mythic = self.get_entries("mythicEncounter");
+
+        let mut result = String::new();
+
+        if let Some(lair) = lair {
+            result.push_str(&format!("*Lair Actions*: {}", lair.join("\n")))
+        }
+        if let Some(regional) = regional {
+            result.push_str(&format!("*Regional Effects*: {}", regional.join("\n")))
+        }
+        if let Some(mythic) = mythic {
+            result.push_str(&format!("*Mythic Effects*: {}", mythic.join("\n")))
+        }
+        result.to_option()
     }
     fn get_stat(&self, stat: &str) -> Option<String> {
         let num = self.get_i64(stat).ok()?;

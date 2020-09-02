@@ -376,12 +376,13 @@ impl Bot {
             Some(mut item) => {
                 let mut keyboard = InlineKeyboardMarkup::new();
                 replace_links(&mut item, &mut keyboard);
-                let msg = match lookup_item.type_ {
+                let mut msg = match lookup_item.type_ {
                     crate::collection::CollectionType::Item => item.format_item(&self.db),
-                    crate::collection::CollectionType::Monster => item.format_monster(),
+                    crate::collection::CollectionType::Monster => item.format_monster(&self.db),
                     crate::collection::CollectionType::Spell => item.format_spell(),
                 }
                 .ok_or(BotError::EntryFormatError)?;
+                replace_string_links(&mut msg, &mut keyboard);
                 self.split_and_send(
                     message,
                     &msg,
