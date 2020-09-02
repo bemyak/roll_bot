@@ -277,14 +277,12 @@ fn demarkup(s: &str) -> String {
         static ref ITALIC: Regex = Regex::new(r"(.*)_(.+)_(.*)").unwrap();
         static ref STRIKE: Regex = Regex::new(r"(.*)\~(.+)\~(.*)").unwrap();
         static ref MONO: Regex = Regex::new(r"(.*)`(.+)`(.*)").unwrap();
-        static ref ROLL: Regex = Regex::new(r"(.*)\s*\[(.+)\](.*)").unwrap();
     }
 
     let s = BOLD.replace_all(&s, "$1$2$3");
     let s = ITALIC.replace_all(&s, "$1$2$3");
     let s = STRIKE.replace_all(&s, "$1$2$3");
     let s = MONO.replace_all(&s, "$1$2$3");
-    let s = ROLL.replace_all(&s, "$1$2$3");
 
     s.into()
 }

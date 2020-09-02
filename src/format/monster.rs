@@ -11,6 +11,10 @@ impl Monster for Document {
         let name = self.get_short_name().or(self.get_name())?;
         let mut result = format!("*{}*", name);
 
+        if let Some(val) = self.get_cr() {
+            result.push_str(&format!("\t{} CR", val));
+        }
+
         let meta = vec![
             self.get_level(),
             self.get_size(),
@@ -23,7 +27,85 @@ impl Monster for Document {
             result.push_str(&format!("\n_{}_", meta));
         }
 
-        todo!()
+        if let Some(ac) = self.get_ac() {
+            result.push_str(&format!("\n*AC*: {}", ac));
+        }
+        if let Some(hp) = self.get_hp() {
+            result.push_str(&format!("\n*HP*: {}", hp));
+        }
+        if let Some(speed) = self.get_speed() {
+            result.push_str(&format!("\n*Speed*: {}", speed));
+        }
+
+        if let Some(strength) = self.get_strength() {
+            result.push_str(&format!("\n*Str*: {}", strength));
+        }
+        if let Some(con) = self.get_con() {
+            result.push_str(&format!("\t*Con*: {}", con));
+        }
+        if let Some(int) = self.get_int() {
+            result.push_str(&format!("\n*Int*: {}", int));
+        }
+        if let Some(wis) = self.get_wis() {
+            result.push_str(&format!("\t*Wis*: {}", wis));
+        }
+        if let Some(cha) = self.get_cha() {
+            result.push_str(&format!("\t*Cha*: {}", cha));
+        }
+
+        if let Some(val) = self.get_save() {
+            result.push_str(&format!("\n*Saving Throws*: {}", val));
+        }
+        if let Some(val) = self.get_skill() {
+            result.push_str(&format!("\n*Skills*: {}", val));
+        }
+        if let Some(val) = self.get_senses() {
+            result.push_str(&format!("\n*Senses*: {}", val));
+        }
+        if let Some(val) = self.get_passive() {
+            result.push_str(&format!("\n*Passive Perception*: {}", val));
+        }
+        if let Some(val) = self.get_languages() {
+            result.push_str(&format!("\n*Languages*: {}", val));
+        }
+        if let Some(val) = self.get_vulnerable() {
+            result.push_str(&format!("\n*Damage Vulnerability*: {}", val));
+        }
+        if let Some(val) = self.get_resist() {
+            result.push_str(&format!("\n*Damage Resistance*: {}", val));
+        }
+        if let Some(val) = self.get_immune() {
+            result.push_str(&format!("\n*Damage Immunity*: {}", val));
+        }
+        if let Some(val) = self.get_condition_immune() {
+            result.push_str(&format!("\n*Condition Immunity*: {}", val));
+        }
+        if let Some(val) = self.get_spellcasting() {
+            result.push_str(&format!("\n{}", val));
+        }
+        if let Some(val) = self.get_trait() {
+            result.push_str(&format!("\n{}", val));
+        }
+        if let Some(val) = self.get_action() {
+            result.push_str(&format!("\n{}", val));
+        }
+        if let Some(val) = self.get_reaction() {
+            result.push_str(&format!("\n{}", val));
+        }
+        if let Some(val) = self.get_legendary_actions_num() {
+            result.push_str(&format!("\nNumber of Legendary Actions{}", val));
+        }
+        if let Some(val) = self.get_legendary_header() {
+            result.push_str(&format!("\n{}", val.join("\n")));
+        }
+        if let Some(val) = self.get_legendary() {
+            result.push_str(&format!("\n{}", val));
+        }
+        if let Some(val) = self.get_legendary_group() {
+            result.push_str(&format!("\nTODO: {}", val));
+        }
+
+        Some(result)
     }
 }
 
@@ -37,7 +119,7 @@ trait MonsterPrivate: Monster {
     fn get_ac(&self) -> Option<String>;
     fn get_hp(&self) -> Option<String>;
     fn get_speed(&self) -> Option<String>;
-    fn get_str(&self) -> Option<String>;
+    fn get_strength(&self) -> Option<String>;
     fn get_dex(&self) -> Option<String>;
     fn get_con(&self) -> Option<String>;
     fn get_int(&self) -> Option<String>;
@@ -157,7 +239,7 @@ impl MonsterPrivate for Document {
             _ => None,
         }
     }
-    fn get_str(&self) -> Option<String> {
+    fn get_strength(&self) -> Option<String> {
         self.get_stat("str")
     }
     fn get_dex(&self) -> Option<String> {
@@ -230,47 +312,12 @@ impl MonsterPrivate for Document {
         self.format_damage_property("conditionImmune")
     }
     fn get_spellcasting(&self) -> Option<String> {
-        let name = self.get_str("name").map(|s| format!("*{}*", s)).ok();
-        let header = self.get_array_of("headerEntries", Bson::as_str);
-        let footer = self.get_array_of("footerEntries", Bson::as_str);
-        let at_will = self.get_array_of("will", Bson::as_str);
-        let ritual = self.get_array_of("ritual", Bson::as_str);
-        let rest = self.format_spell_frequency("rest");
-        let daily = self.format_spell_frequency("daily");
-        let weekly = self.format_spell_frequency("weekly");
-        let spells = self.format_spells("spells");
-
-        let mut result = String::new();
-
-        if let Some(name) = name {
-            result.push_str(&format!("*{}*: ", name));
-        }
-        if let Some(header) = header {
-            result.push_str(&header.join("\n"));
-        }
-        if let Some(at_will) = at_will {
-            result.push_str(&format!("\nAt will: {}", at_will.join(", ")));
-        }
-        if let Some(daily) = daily {
-            result.push_str(&format!("\n{}", daily.join("\n")));
-        }
-        if let Some(rest) = rest {
-            result.push_str(&format!("\n{}", rest.join("\n")));
-        }
-        if let Some(weekly) = weekly {
-            result.push_str(&format!("\n{}", weekly.join("\n")));
-        }
-        if let Some(ritual) = ritual {
-            result.push_str(&format!("\nRituals: {}", ritual.join(", ")));
-        }
-        if let Some(spells) = spells {
-            result.push_str(&format!("\n{}", spells.join("\n")));
-        }
-        if let Some(footer) = footer {
-            result.push_str(&format!("\n{}", footer.join("\n")));
-        }
-
-        Some(result)
+        self.get_array_of("spellcasting", Bson::as_document)?
+            .into_iter()
+            .filter_map(|doc| doc.format_spellcasting())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .to_option()
     }
     fn get_trait(&self) -> Option<String> {
         self.get_named_entries("trait")
@@ -302,6 +349,7 @@ trait MonsterUtils: Monster {
     fn format_damage_property(&self, key: &str) -> Option<String>;
     fn format_spell_frequency(&self, key: &str) -> Option<Vec<String>>;
     fn format_spells(&self, key: &str) -> Option<Vec<String>>;
+    fn format_spellcasting(&self) -> Option<String>;
     fn get_stat(&self, stat: &str) -> Option<String>;
 }
 
@@ -369,29 +417,29 @@ impl MonsterUtils for Document {
     fn format_spells(&self, key: &str) -> Option<Vec<String>> {
         let doc = self.get_document(key).ok()?;
         doc.into_iter()
-            .filter_map(|(k, v)| {
-                let k = k.parse::<i64>().ok();
-                let v = v.as_document();
-                match (k, v) {
+            .filter_map(|(slot, doc)| {
+                let slot = slot.parse::<i64>().ok();
+                let v = doc.as_document();
+                match (slot, v) {
                     (Some(k), Some(v)) => Some((k, v)),
                     _ => None,
                 }
             })
-            .filter_map(|(k, v)| {
-                let lower = v.get_i64("lower").ok();
-                let spells = v.get_array_of("spells", Bson::as_str);
-                let slots = v.get_i64("slots").ok();
+            .filter_map(|(slot, doc)| {
+                let lower = doc.get_i64("lower").ok();
+                let spells = doc.get_array_of("spells", Bson::as_str);
+                let slots = doc.get_i64("slots").ok();
                 match spells {
                     Some(spells) => {
                         let mut result = String::new();
-                        let k = Ordinal(k).to_string();
+                        let k = Ordinal(slot).to_string();
                         match lower {
                             Some(lower) => {
                                 let lower = Ordinal(lower).to_string();
                                 result.push_str(&format!("{}-{}: ", lower, k));
                             }
                             None => {
-                                result.push_str(&k);
+                                result.push_str(&format!("{}: ", k));
                             }
                         }
 
@@ -410,6 +458,49 @@ impl MonsterUtils for Document {
             })
             .collect::<Vec<_>>()
             .to_option()
+    }
+    fn format_spellcasting(&self) -> Option<String> {
+        let name = self.get_str("name").ok();
+        let header = self.get_array_of("headerEntries", Bson::as_str);
+        let footer = self.get_array_of("footerEntries", Bson::as_str);
+        let at_will = self.get_array_of("will", Bson::as_str);
+        let ritual = self.get_array_of("ritual", Bson::as_str);
+        let rest = self.format_spell_frequency("rest");
+        let daily = self.format_spell_frequency("daily");
+        let weekly = self.format_spell_frequency("weekly");
+        let spells = self.format_spells("spells");
+
+        let mut result = String::new();
+
+        if let Some(name) = name {
+            result.push_str(&format!("*{}*: ", name));
+        }
+        if let Some(header) = header {
+            result.push_str(&header.join("\n"));
+        }
+        if let Some(at_will) = at_will {
+            result.push_str(&format!("\nAt will: {}", at_will.join(", ")));
+        }
+        if let Some(daily) = daily {
+            result.push_str(&format!("\n{}", daily.join("\n")));
+        }
+        if let Some(rest) = rest {
+            result.push_str(&format!("\n{}", rest.join("\n")));
+        }
+        if let Some(weekly) = weekly {
+            result.push_str(&format!("\n{}", weekly.join("\n")));
+        }
+        if let Some(ritual) = ritual {
+            result.push_str(&format!("\nRituals: {}", ritual.join(", ")));
+        }
+        if let Some(spells) = spells {
+            result.push_str(&format!("\n{}", spells.join("\n")));
+        }
+        if let Some(footer) = footer {
+            result.push_str(&format!("\n{}", footer.join("\n")));
+        }
+
+        Some(result)
     }
     fn get_stat(&self, stat: &str) -> Option<String> {
         let num = self.get_i64(stat).ok()?;

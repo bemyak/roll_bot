@@ -581,14 +581,10 @@ fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardM
 
         match cmd {
             "i" => format!("• {}", nice_str),
+            "hit" => format!("+{}", arg1),
             "h" => match caps.name("bonus") {
-                Some(bonus) => {
-                    let bonus = bonus.as_str();
-                    let roll_results = roll_results(&format!("d20+{}", bonus)).unwrap();
-                    let roll = roll_results.get(0).unwrap();
-                    format!("+{} `[{}]`", bonus, roll.total)
-                }
-                None => "+".to_owned(),
+                Some(bonus) => format!("*{}*", bonus.as_str()),
+                None => "".to_owned(),
             },
             "atk" => "".to_owned(),
             "scaledamage" => format!("*{}*", nice_str),
