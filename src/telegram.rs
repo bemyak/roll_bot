@@ -594,16 +594,23 @@ fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardM
                 let roll = roll_results.get(0).unwrap();
                 format!("*{}* `[{}]` ", arg1, roll.total)
             }
+            "recharge" => {
+                if arg1.is_empty() {
+                    format!("(Recharge 6)")
+                } else {
+                    format!("(Recharge {}-6)", arg1)
+                }
+            }
             _ => {
-                let nice_str = arg4.or(arg3).or(arg2).unwrap_or(arg1);
+                let nice_str = arg4.or(arg3).unwrap_or(arg1);
                 if let Some(item) = COMMANDS.get(cmd) {
                     keyboard.add_row(vec![InlineKeyboardButton::callback(
                         format!("{}: {}", item.get_default_command(), nice_str),
                         format!("{} {}", item.get_default_command(), arg1),
                     )]);
-                    format!("_{}_ ", nice_str)
+                    format!("_{}_", nice_str)
                 } else {
-                    format!("_{}_ ", nice_str)
+                    format!("_{}_", nice_str)
                 }
             }
         }

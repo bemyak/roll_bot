@@ -137,16 +137,32 @@ impl<T: ?Sized> EntryArrayUtils<T> for Document {
 }
 
 fn format_entry(entry: &Bson) -> Option<String> {
-    Some(match entry {
+    match entry {
         Bson::String(entry) => entry.clone(),
         Bson::Document(entry) => match entry.get_str("type").ok()? {
             "list" => {
-                let items = entry.get_array_of("items", Bson::as_str)?;
+                let items = entry.get_array("items").ok()?;
                 items
                     .into_iter()
-                    .map(|s| format!("• {}", s))
+                    .filter_map(|bs| format_entry(bs))
+                    .map(|s| format!("\t• {}", s))
                     .collect::<Vec<_>>()
                     .join("\n")
+            }
+            "item" => {
+                let name = entry.get_str("name").ok()?;
+                let entry = entry.get_string("entry").or(entry
+                    .get_array("entries")
+                    .map(|array| {
+                        array
+                            .into_iter()
+                            .filter_map(format_entry)
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .ok())?;
+
+                format!("{}: {}", name, entry)
             }
             "entries" => {
                 let name = entry.get_str("name").ok()?;
@@ -215,7 +231,8 @@ fn format_entry(entry: &Bson) -> Option<String> {
         _ => {
             return None;
         }
-    })
+    }
+    .to_option()
 }
 
 fn simple_format(bs: &Bson) -> String {

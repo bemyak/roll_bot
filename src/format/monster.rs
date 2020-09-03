@@ -13,7 +13,7 @@ impl Monster for Document {
         let mut result = format!("*{}*", name);
 
         if let Some(val) = self.get_cr() {
-            result.push_str(&format!("\t{} CR", val));
+            result.push_str(&format!("\tCR {}", val));
         }
 
         let meta = vec![
@@ -38,6 +38,9 @@ impl Monster for Document {
         }
         if let Some(strength) = self.get_strength() {
             result.push_str(&format!("\n*Str*: {}", strength));
+        }
+        if let Some(dex) = self.get_dex() {
+            result.push_str(&format!("\t*Dex*: {}", dex));
         }
         if let Some(con) = self.get_con() {
             result.push_str(&format!("\t*Con*: {}", con));
@@ -101,9 +104,16 @@ impl Monster for Document {
             let legendary_actions = db.get_item("legendaryGroup", &val).ok().flatten();
             if let Some(val) = legendary_actions {
                 if let Some(val) = val.format_legendary_group() {
-                    result.push_str(&format!("\n\n{}", val));
+                    result.push_str(&format!("{}", val));
                 }
             }
+        }
+        if let Some(val) = self.get_mythic() {
+            result.push_str("\n\n*Mythic Actions*\n");
+            if let Some(val) = self.get_mythic_header() {
+                result.push_str(&format!("{}", val.join("\n")));
+            }
+            result.push_str(&format!("\n{}", val));
         }
         Some(result)
     }
@@ -142,6 +152,8 @@ trait MonsterPrivate: Monster {
     fn get_legendary_group(&self) -> Option<String>;
     fn get_legendary_header(&self) -> Option<Vec<String>>;
     fn get_legendary(&self) -> Option<String>;
+    fn get_mythic_header(&self) -> Option<Vec<String>>;
+    fn get_mythic(&self) -> Option<String>;
 }
 
 impl MonsterPrivate for Document {
@@ -345,6 +357,12 @@ impl MonsterPrivate for Document {
     fn get_legendary(&self) -> Option<String> {
         self.get_named_entries("legendary")
     }
+    fn get_mythic_header(&self) -> Option<Vec<String>> {
+        self.get_entries("mythicHeader")
+    }
+    fn get_mythic(&self) -> Option<String> {
+        self.get_named_entries("mythic")
+    }
 }
 trait MonsterUtils: Monster {
     fn format_alignment_doc(&self) -> Option<String>;
@@ -516,13 +534,13 @@ impl MonsterUtils for Document {
         let mut result = String::new();
 
         if let Some(lair) = lair {
-            result.push_str(&format!("*Lair Actions*: {}", lair.join("\n")))
+            result.push_str(&format!("\n\n*Lair Actions*\n{}", lair.join("\n")))
         }
         if let Some(regional) = regional {
-            result.push_str(&format!("*Regional Effects*: {}", regional.join("\n")))
+            result.push_str(&format!("\n\n*Regional Effects*\n{}", regional.join("\n")))
         }
         if let Some(mythic) = mythic {
-            result.push_str(&format!("*Mythic Effects*: {}", mythic.join("\n")))
+            result.push_str(&format!("\n\n*Mythic Effects*\n{}", mythic.join("\n")))
         }
         result.to_option()
     }
