@@ -16,7 +16,6 @@ mod telegram;
 use std::error::Error;
 use std::{
     env,
-    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -29,6 +28,16 @@ use db::DndDatabase;
 
 pub const PROJECT_URL: &str = "https://gitlab.com/bemyak/roll_bot";
 
+lazy_static! {
+    static ref DB: DndDatabase = {
+        if env::var("ROLL_BOT_USE_TEST_DB").is_ok() {
+            DndDatabase::new("./test_data/roll_bot.ejdb").unwrap()
+        } else {
+            DndDatabase::new("./roll_bot.ejdb").unwrap()
+        }
+    };
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let log_config = simplelog::ConfigBuilder::new()
@@ -38,19 +47,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     task::spawn(async move { metrics::serve_metrics().await });
 
-    let use_test_db = env::var("ROLL_BOT_USE_TEST_DB").is_ok();
-    let db = if use_test_db {
-        Arc::new(DndDatabase::new("./test_data/roll_bot.ejdb")?)
-    } else {
-        Arc::new(DndDatabase::new("./roll_bot.ejdb")?)
-    };
-
-    let fetch_db = db.clone();
     task::spawn(async move {
         let mut interval = time::interval(Duration::from_secs(60 * 60 * 24));
         loop {
             interval.tick().await;
-            let fetch_result = fetch(fetch_db.clone()).await;
+            let fetch_result = fetch().await;
             if let Err(err) = fetch_result {
                 error!("Error occurred while fetching data: {}", err)
             }
@@ -58,16 +59,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     loop {
-        let bot = telegram::Bot::new(db.clone()).await?;
+        let bot = telegram::Bot::new().await?;
         bot.start().await;
         error!("The bot has crashed! Restarting...");
     }
 }
 
-async fn fetch(db: Arc<DndDatabase>) -> Result<(), Box<dyn Error + Send + Sync>> {
+async fn fetch() -> Result<(), Box<dyn Error + Send + Sync>> {
     let changelog = fetch::fetch_changelog().await?;
     let ver = get_latest_ver(&changelog);
-    let cur_ver = db.get_version().ok().flatten();
+    let cur_ver = DB.get_version().ok().flatten();
 
     if !should_update(cur_ver.as_ref(), ver) {
         info!(
@@ -77,12 +78,12 @@ async fn fetch(db: Arc<DndDatabase>) -> Result<(), Box<dyn Error + Send + Sync>>
         return Ok(());
     }
 
-    db.save_collection(changelog, db::VER_COLLECTION_NAME)?;
+    DB.save_collection(changelog, db::VER_COLLECTION_NAME)?;
     let data = fetch::fetch().await?;
     for (collection, items) in data {
-        db.save_collection(items, &collection)?;
+        DB.save_collection(items, &collection)?;
     }
-    db.update_cache();
+    DB.update_cache();
     Ok(())
 }
 

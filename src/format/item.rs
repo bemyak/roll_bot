@@ -1,11 +1,11 @@
+use crate::DB;
 use super::{abbreviation::Abbreviation, cost_to_string, Capitalizable, Entry, FilterJoinable};
-use crate::db::DndDatabase;
 use ejdb::bson::{Bson, Document};
 use std::convert::identity;
 
 pub trait Item: Entry {
     // we need database to expand abbreviations
-    fn format_item(&self, db: &DndDatabase) -> Option<String>;
+    fn format_item(&self) -> Option<String>;
 
     fn get_type(&self) -> Option<String>;
     fn get_attune(&self) -> Option<String>;
@@ -34,16 +34,16 @@ pub trait Item: Entry {
 }
 
 impl Item for Document {
-    fn format_item(&self, db: &DndDatabase) -> Option<String> {
+    fn format_item(&self) -> Option<String> {
         let mut s = format!("*{}*", self.get_name()?);
 
         let type_ = self.get_type();
         let (type_abbreviation, type_additional_abbreviation) = if let Some(type_) = &type_ {
             (
-                db.find_one_by("itemType", "abbreviation", &type_)
+                DB.find_one_by("itemType", "abbreviation", &type_)
                     .ok()
                     .flatten(),
-                db.find_one_by("itemTypeAdditionalEntries", "appliesTo", &type_)
+                DB.find_one_by("itemTypeAdditionalEntries", "appliesTo", &type_)
                     .ok()
                     .flatten(),
             )
@@ -55,7 +55,7 @@ impl Item for Document {
         let property_abbreviations = if let Some(properties) = &properties {
             properties
                 .iter()
-                .filter_map(|p| db.find_one_by("itemProperties", "abbreviation", p).ok())
+                .filter_map(|p| DB.find_one_by("itemProperties", "abbreviation", p).ok())
                 .collect::<Vec<_>>()
         } else {
             Vec::new()

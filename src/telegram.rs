@@ -1,6 +1,6 @@
 use std::env;
 use std::error::Error;
-use std::{borrow::Cow, cmp::min, mem, sync::Arc, time::Instant};
+use std::{borrow::Cow, cmp::min, mem, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
@@ -18,7 +18,7 @@ use telegram_bot::{
 use thiserror::Error;
 
 use crate::collection::{Collection, COMMANDS};
-use crate::db::DndDatabase;
+use crate::DB;
 use crate::format::{
     db::*, item::Item, monster::Monster, roll::*, spell::*, telegram::*, utils::*,
 };
@@ -51,13 +51,12 @@ pub enum BotError {
 }
 
 pub struct Bot {
-    db: Arc<DndDatabase>,
     api: Api,
     me: User,
 }
 
 impl Bot {
-    pub async fn new(db: Arc<DndDatabase>) -> Result<Self, BotError> {
+    pub async fn new() -> Result<Self, BotError> {
         let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
             error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
             std::process::exit(1)
@@ -67,7 +66,7 @@ impl Bot {
         let api = Api::with_connector(token, connector);
         let me = api.send(GetMe).await?;
 
-        Ok(Self { db, api, me })
+        Ok(Self { api, me })
     }
 
     pub async fn start(self) {
@@ -180,7 +179,7 @@ impl Bot {
 
                             let cmd_result = cmd_result.map_err(|err| err.into());
 
-                            self.db.log_message(
+                            DB.log_message(
                                 user_id,
                                 chat_type,
                                 request,
@@ -309,7 +308,7 @@ impl Bot {
 
     async fn stats(&self, message: &Message) -> Result<Option<String>, BotError> {
         let last_update = Instant::now()
-            .checked_duration_since(self.db.get_update_timestamp())
+            .checked_duration_since(DB.get_update_timestamp())
             .unwrap()
             .as_secs();
 
@@ -320,8 +319,8 @@ impl Bot {
             86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
         };
 
-        let collection_metadata = self.db.get_metadata()?;
-        let messages = self.db.get_all_massages()?;
+        let collection_metadata = DB.get_metadata()?;
+        let messages = DB.get_all_massages()?;
 
         let msg = format!(
             "*Table stats*\n{}\n\n*Usage stats* (since last month / total)\n{}\n\nLast database update `{}` ago",
@@ -369,7 +368,7 @@ impl Bot {
         let exact_match_result = lookup_item
             .collections
             .iter()
-            .filter_map(|collection| self.db.get_item(collection, arg).ok().flatten())
+            .filter_map(|collection| DB.get_item(collection, arg).ok().flatten())
             .next();
 
         match exact_match_result {
@@ -377,8 +376,8 @@ impl Bot {
                 let mut keyboard = InlineKeyboardMarkup::new();
                 replace_links(&mut item, &mut keyboard);
                 let mut msg = match lookup_item.type_ {
-                    crate::collection::CollectionType::Item => item.format_item(&self.db),
-                    crate::collection::CollectionType::Monster => item.format_monster(&self.db),
+                    crate::collection::CollectionType::Item => item.format_item(),
+                    crate::collection::CollectionType::Monster => item.format_monster(),
                     crate::collection::CollectionType::Spell => item.format_spell(),
                 }
                 .ok_or(BotError::EntryFormatError)?;
@@ -397,7 +396,7 @@ impl Bot {
                 let mut found = false;
 
                 for collection in lookup_item.collections {
-                    let cache = self.db.cache.read().unwrap();
+                    let cache = DB.cache.read().unwrap();
                     let engine = cache.get(collection).unwrap();
                     let results = engine.search(arg);
 

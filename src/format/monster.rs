@@ -1,14 +1,14 @@
+use crate::DB;
 use super::{Capitalizable, Entry, EntryArrayUtils, EntryUtils, FilterJoinable, Optionable};
-use crate::db::DndDatabase;
 use ejdb::bson::{Bson, Document};
 use ordinal::Ordinal;
 
 pub trait Monster: Entry {
-    fn format_monster(&self, db: &DndDatabase) -> Option<String>;
+    fn format_monster(&self) -> Option<String>;
 }
 
 impl Monster for Document {
-    fn format_monster(&self, db: &DndDatabase) -> Option<String> {
+    fn format_monster(&self) -> Option<String> {
         let name = self.get_short_name().or(self.get_name())?;
         let mut result = format!("*{}*", name);
 
@@ -25,7 +25,7 @@ impl Monster for Document {
         ]
         .filter_join(", ");
         if let Some(meta) = meta {
-            result.push_str(&format!("\n_{}_", meta));
+            result.push_str(&format!("\n_{}_\n", meta));
         }
         if let Some(ac) = self.get_ac() {
             result.push_str(&format!("\n*AC*: {}", ac));
@@ -101,7 +101,7 @@ impl Monster for Document {
             result.push_str(&format!("\n{}", val));
         }
         if let Some(val) = self.get_legendary_group() {
-            let legendary_actions = db.get_item("legendaryGroup", &val).ok().flatten();
+            let legendary_actions = DB.get_item("legendaryGroup", &val).ok().flatten();
             if let Some(val) = legendary_actions {
                 if let Some(val) = val.format_legendary_group() {
                     result.push_str(&format!("{}", val));
