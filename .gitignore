@@ -13,3 +13,4 @@ rls
 
 # Prodution database
 /roll_bot.ejdb*
+/test_data

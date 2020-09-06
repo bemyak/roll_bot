@@ -20,6 +20,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use serde_json::Value as JsonValue;
 #[allow(unused_imports)]
 use tokio::task;
 use tokio::time;
@@ -41,13 +42,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let db = if use_test_db {
         Arc::new(DndDatabase::new("./test_data/roll_bot.ejdb")?)
     } else {
-        let db = Arc::new(DndDatabase::new("./roll_bot.ejdb")?);
-        let fetch_db = db.clone();
-        task::spawn(async move {
-            fetch_job(fetch_db).await;
-        });
-        db
+        Arc::new(DndDatabase::new("./roll_bot.ejdb")?)
     };
+
+    let fetch_db = db.clone();
+    task::spawn(async move {
+        let mut interval = time::interval(Duration::from_secs(60 * 60 * 24));
+        loop {
+            interval.tick().await;
+            let fetch_result = fetch(fetch_db.clone()).await;
+            if let Err(err) = fetch_result {
+                error!("Error occurred while fetching data: {}", err)
+            }
+        }
+    });
 
     loop {
         let bot = telegram::Bot::new(db.clone()).await?;
@@ -56,26 +64,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn fetch_job(db: Arc<DndDatabase>) {
-    let mut interval = time::interval(Duration::from_secs(60 * 60 * 24));
+async fn fetch(db: Arc<DndDatabase>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let changelog = fetch::fetch_changelog().await?;
+    let ver = get_latest_ver(&changelog);
+    let cur_ver = db.get_version().ok().flatten();
 
-    loop {
-        interval.tick().await;
-
-        let result = fetch::fetch().await;
-        match result {
-            Ok(data) => {
-                for (collection, items) in data {
-                    db.save_collection(items, &collection)
-                        .unwrap_or_else(|err| {
-                            error!("Error occurred while saving data to DB: {}", err)
-                        });
-                }
-                db.update_cache();
-            }
-            Err(err) => error!("Error occurred while fetching data: {}", err),
-        }
+    if !should_update(cur_ver.as_ref(), ver) {
+        info!(
+            "Skipping update, db is running the newest version: {:?}",
+            ver
+        );
+        return Ok(());
     }
+
+    db.save_collection(changelog, db::VER_COLLECTION_NAME)?;
+    let data = fetch::fetch().await?;
+    for (collection, items) in data {
+        db.save_collection(items, &collection)?;
+    }
+    db.update_cache();
+    Ok(())
+}
+
+fn should_update(cur_ver: Option<&String>, ver: Option<&str>) -> bool {
+    match (cur_ver, ver) {
+        (Some(cur_ver), Some(ver)) => cur_ver != ver,
+        _ => true,
+    }
+}
+
+fn get_latest_ver(changelog: &Vec<JsonValue>) -> Option<&str> {
+    let last = changelog.last()?;
+    let doc = last.as_object()?;
+    let ver = doc.get("ver")?;
+    ver.as_str()
 }
 
 pub fn get_unix_time() -> u64 {

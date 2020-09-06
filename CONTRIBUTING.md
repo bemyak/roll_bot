@@ -1,18 +1,16 @@
 ## Contributions are welcome and greatly appreciated!
 
 ### Recommended starting gear
-- latest stable Rust toolchain.
+- Latest stable Rust toolchain.
   Check the [rustup](https://rustup.rs/) project or install `rust` with your distribution's package manager (should include cargo as well)
 - `vscode` or `vscodium` with `rust-analyzer` extension
 - `ROLL_BOT_TOKEN` environment variable set. Get yours from the [BotFather](https://t.me/BotFather)
-- `ROLL_BOT_USE_TEST_DB` just set this environment variable to any value (e.g. `true`) to avoid unnecessary loading of 5e.tools
-
-> **NOTE:** After cloning the repo, please execute: `$> git update-index --skip-worktree ./test_data/*` to avoid committing test database
+- `ROLL_BOT_USE_TEST_DB` just set this environment variable to any value (e.g. `true`) to place your database under `/test_data` and not span project root
 
 ### Main development principles
 1. No crashes!  
    The bot is supposed to work in a daemon-like way, so no panics should occur and all errors should be intercepted and properly handled.  
-   Tracebacks should not be visible to a user, but properly logged.
+   Backtraces should not be visible to a user, but properly logged.
 2. Nice UI and UX.  
    Before implementing a feature, please spend some time thinking on how an end user will use it.  
    Try some designing and experimenting first before settings the things up into code.

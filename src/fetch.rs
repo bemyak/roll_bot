@@ -9,6 +9,7 @@ use serde_json::Value as JsonValue;
 use crate::collection::*;
 
 const BASE_URL: &str = "https://5e.tools/data";
+const CHANGELOG_URL: &str = "/changelog.json";
 const INDEX: &str = "/index.json";
 const EXTENSION: &str = ".json";
 
@@ -37,6 +38,22 @@ impl Collection {
         let results = try_join_all(work).await?;
         let values = results.into_iter().flatten().collect::<Vec<_>>();
         Ok(values)
+    }
+}
+
+pub async fn fetch_changelog() -> Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>> {
+    let changelog_url = format!("{}{}", BASE_URL, CHANGELOG_URL);
+    info!("Fetching changelog {}", changelog_url);
+    let changelog = reqwest::get(&changelog_url).await?;
+    let changelog = changelog.text().await?;
+    let changelog: JsonValue = serde_json::from_str(&changelog)?;
+    match changelog {
+        JsonValue::Array(arr) => Ok(arr),
+        _ => Err(FetchError {
+            url: changelog_url.clone(),
+            desc: "Bad changelog document format".to_string(),
+        }
+        .into()),
     }
 }
 

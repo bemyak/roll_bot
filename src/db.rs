@@ -22,12 +22,13 @@ use crate::{
 
 // System table should start with an underscore, so they will not be treated like D&D data collections
 const LOG_COLLECTION_NAME: &str = "_log";
+pub const VER_COLLECTION_NAME: &str = "_ver";
 
 pub struct DndDatabase {
     pub cache: RwLock<HashMap<CollectionName, SimSearch<String>>>,
     inner: RwLock<Inner>,
 }
-// The EJDB's raw pointer won't change during our mutations
+// EJDB raw pointer won't change during our mutations
 unsafe impl Sync for Inner {}
 
 struct Inner {
@@ -43,6 +44,11 @@ impl DndDatabase {
             let coll = ejdb.collection(LOG_COLLECTION_NAME)?;
             coll.index("timestamp").number().set()?;
             coll.index("user_id").number().set()?;
+        }
+        {
+            let coll = ejdb.collection(VER_COLLECTION_NAME)?;
+            coll.index("ver").string(true).set()?;
+            coll.index("date").string(true).set()?;
         }
 
         let inner = Inner {
@@ -180,6 +186,20 @@ impl DndDatabase {
         match self.try_log_message(user_id, chat_type, request, response, latency) {
             Ok(_) => {}
             Err(err) => error!("Failed to save message to db: {}", err),
+        }
+    }
+
+    pub fn get_version(&self) -> Result<Option<String>, Box<dyn Error>> {
+        let inner = self.inner.read().unwrap();
+        let coll = inner.db.collection(VER_COLLECTION_NAME)?;
+        let results = coll.query(Q.empty(), QH.empty()).find()?;
+        match results.last() {
+            Some(result) => {
+                let result = result?;
+                let ver = result.get_str("ver")?;
+                Ok(Some(ver.to_string()))
+            }
+            None => Ok(None),
         }
     }
 
