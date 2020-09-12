@@ -23,5 +23,5 @@ Since Telegram might be blocked in some countries, it makes sense to use Tor Net
 4. Set `roll_bot_http_proxy` environment variable:  
    `export roll_bot_http_proxy=http://localhost:9080` or `set -x roll_bot_http_proxy http://localhost:9080` if you're using fish shell.
 
-## Is it even legal?
-This projects doesn't host any data, everything is fetched from https://5e.tools public API, so all legal questions should be addressed there.
+# Data Source Concerns/Issues?
+This project's data is pulled from a [3rd party source](https://5e.tools), and typos or questions are best presented there.

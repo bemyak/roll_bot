@@ -1461,7 +1461,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "roll_bot"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "comfy-table 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ejdb 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
