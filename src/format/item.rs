@@ -1,4 +1,7 @@
-use super::{abbreviation::Abbreviation, cost_to_string, Capitalizable, Entry, FilterJoinable};
+use super::{
+    abbreviation::Abbreviation, cost_to_string, Capitalizable, Entry, EntryArrayUtils,
+    FilterJoinable, Optionable,
+};
 use crate::DB;
 use ejdb::bson::{Bson, Document};
 use std::convert::identity;
@@ -19,7 +22,7 @@ pub trait Item: Entry {
     fn get_bonus_weapon_attack(&self) -> Option<String>;
     fn get_pack_contents(&self) -> Option<Vec<String>>;
     fn get_ammo_type(&self) -> Option<String>;
-    fn get_properties(&self) -> Option<Vec<String>>;
+    fn get_properties(&self) -> Option<Vec<&str>>;
     fn get_weight(&self) -> Option<i64>;
     fn get_loot_tables(&self) -> Option<Vec<String>>;
 
@@ -55,7 +58,7 @@ impl Item for Document {
         let property_abbreviations = if let Some(properties) = &properties {
             properties
                 .iter()
-                .filter_map(|p| DB.find_one_by("itemProperties", "abbreviation", p).ok())
+                .filter_map(|p| DB.find_one_by("itemProperty", "abbreviation", p).ok())
                 .collect::<Vec<_>>()
         } else {
             Vec::new()
@@ -195,21 +198,8 @@ impl Item for Document {
     fn get_weight(&self) -> Option<i64> {
         self.get_i64("weight").ok()
     }
-    fn get_properties(&self) -> Option<Vec<String>> {
-        let properties = self.get_array("property").ok()?;
-        let properties = properties
-            .iter()
-            .filter_map(Bson::as_str)
-            .map(|t| t.to_string())
-            // .filter_map(|property| db.get_abbreviation("itemProperty", property).ok().flatten())
-            // .filter_map(|abbr| abbr.get_entries("entries"))
-            // .flatten()
-            .collect::<Vec<_>>();
-        if properties.is_empty() {
-            None
-        } else {
-            Some(properties)
-        }
+    fn get_properties(&self) -> Option<Vec<&str>> {
+        self.get_array_of("property", Bson::as_str)?.to_option()
     }
     fn get_attune(&self) -> Option<String> {
         let base = "requires attunement".to_string();
