@@ -14,10 +14,11 @@ use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
 use simsearch::{SearchOptions, SimSearch};
 
-use crate::get_unix_time;
 use crate::{
     collection::{CollectionName, COLLECTION_NAMES},
+    get_unix_time,
     metrics::{COLLECTION_ITEM_GAUGE, COLLECTION_TIMESTAMP_GAUGE},
+    telegram::BotError,
 };
 
 // System table should start with an underscore, so they will not be treated like D&D data collections
@@ -180,7 +181,7 @@ impl DndDatabase {
         user_id: i64,
         chat_type: &str,
         request: String,
-        response: &Result<Option<String>, Box<dyn Error>>,
+        response: &Result<Option<String>, BotError>,
         latency: u64,
     ) {
         match self.try_log_message(user_id, chat_type, request, response, latency) {
@@ -208,7 +209,7 @@ impl DndDatabase {
         user_id: i64,
         chat_type: &str,
         request: String,
-        response: &Result<Option<String>, Box<dyn Error>>,
+        response: &Result<Option<String>, BotError>,
         latency: u64,
     ) -> Result<(), ejdb::Error> {
         let inner = self.inner.read().unwrap();

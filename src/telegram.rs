@@ -1,6 +1,4 @@
-use std::env;
-use std::error::Error;
-use std::{borrow::Cow, cmp::min, mem, time::Instant};
+use std::{borrow::Cow, cmp::min, env, error::Error, mem, sync::Arc, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
@@ -13,16 +11,17 @@ use telegram_bot::{
     reply_markup,
     types::reply_markup::*,
     Api, CallbackQuery, GetMe, Message, MessageEntity, MessageEntityKind, MessageKind,
-    MessageOrChannelPost, ParseMode, UpdateKind, User,
+    MessageOrChannelPost, ParseMode, Update, UpdateKind, User,
 };
 use thiserror::Error;
+use tokio::task;
 
 use crate::collection::{Collection, COMMANDS};
-use crate::DB;
 use crate::format::{
     db::*, item::Item, monster::Monster, roll::*, spell::*, telegram::*, utils::*,
 };
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
+use crate::DB;
 use crate::PROJECT_URL;
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 
@@ -73,28 +72,38 @@ impl Bot {
         info!("Started successfully");
         let mut stream = self.api.stream();
 
-        while let Some(Ok(update)) = stream.next().await {
-            let result = match &update.kind {
-                UpdateKind::Message(msg) => self.process_message(msg).await,
-                UpdateKind::EditedMessage(_) => Ok(()),
-                UpdateKind::ChannelPost(_) => Ok(()),
-                UpdateKind::EditedChannelPost(_) => Ok(()),
-                UpdateKind::InlineQuery(_) => Ok(()),
-                UpdateKind::CallbackQuery(msg) => self.process_callback_query(msg).await,
-                UpdateKind::Error(_) => Ok(()),
-                UpdateKind::Unknown => Ok(()),
-            };
+        let s = Arc::new(self);
 
-            if let Err(err) = result {
-                error!(
-                    "Error occurred while processing message: {:?}, {:?}",
-                    update, err
-                );
-            }
+        while let Some(Ok(update)) = stream.next().await {
+            let s = s.clone();
+            task::spawn(async move {
+                s.process_update(update).await;
+            });
+        }
+    }
+
+    async fn process_update(&self, update: Update) {
+        let result = match &update.kind {
+            UpdateKind::Message(msg) => self.process_message(msg).await,
+            UpdateKind::EditedMessage(_) => Ok(()),
+            UpdateKind::ChannelPost(_) => Ok(()),
+            UpdateKind::EditedChannelPost(_) => Ok(()),
+            UpdateKind::InlineQuery(_) => Ok(()),
+            UpdateKind::CallbackQuery(msg) => self.process_callback_query(msg).await,
+            UpdateKind::Error(_) => Ok(()),
+            UpdateKind::Unknown => Ok(()),
+        };
+
+        if let Err(err) = result {
+            error!(
+                "Error occurred while processing message: {:?}, {:?}",
+                update, err
+            );
         }
     }
 
     async fn process_callback_query(&self, callback_query: &CallbackQuery) -> Result<(), BotError> {
+        trace!("Got callback: {:?}", callback_query.data);
         let callback_query = callback_query.clone();
         if let (Some(data), Some(msg)) = (callback_query.data, callback_query.message) {
             let (cmd, arg) = if let Some(sep_i) = data.find(" ") {
@@ -126,6 +135,7 @@ impl Bot {
         let start_processing = Instant::now();
         match &message.kind {
             MessageKind::Text { data, entities } => {
+                trace!("Got message: {:?}", data);
                 // No command was specified, but maybe it is a response to the previous command
                 if entities.is_empty() {
                     if let Some(MessageOrChannelPost::Message(reply)) =
@@ -172,12 +182,10 @@ impl Bot {
                             MESSAGE_COUNTER
                                 .with_label_values(&[
                                     format!("{}", user_id).as_str(),
-                                    chat_type_to_string(&message.chat),
+                                    chat_type,
                                     cmd.as_ref(),
                                 ])
                                 .inc();
-
-                            let cmd_result = cmd_result.map_err(|err| err.into());
 
                             DB.log_message(
                                 user_id,
@@ -239,7 +247,7 @@ impl Bot {
         message: Message,
         cmd: String,
         data: String,
-        err: Box<dyn Error>,
+        err: BotError,
     ) -> Result<Option<String>, telegram_bot::Error> {
         let url = format!("{}/-/issues/new?issue[title]=Error while processing command {}&issue[description]={}\n{}", PROJECT_URL, cmd, data, err);
         let msg = format!(
@@ -499,7 +507,6 @@ impl Bot {
         // e.g.: /roll_2d8@bot_name
         let (cmd, arg) = if arg.is_empty() {
             let decoded_cmd = tg_decode(cmd);
-            trace!("{}", decoded_cmd);
             let mut iter = decoded_cmd.split("_");
             (
                 iter.next().unwrap_or(cmd).to_owned(),
