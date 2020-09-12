@@ -70,10 +70,9 @@ impl DndDatabase {
     ) -> Result<(), ejdb::Error> {
         info!("Saving {}, {}", collection, json.len());
         let bs: Bson = serde_json::Value::Array(json).into();
-        let arr = bs.as_array().ok_or(bson::DecoderError::Unknown(format!(
-            "{} field is not an array",
-            collection
-        )))?;
+        let arr = bs.as_array().ok_or_else(|| {
+            bson::DecoderError::Unknown(format!("{} field is not an array", collection))
+        })?;
         let mut inner = self.inner.write().unwrap();
         inner.timestamp = Instant::now();
         inner.db.drop_collection(collection, true)?;

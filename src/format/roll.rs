@@ -71,7 +71,7 @@ pub fn roll_dice(msg: &str) -> Result<String, DieFormatError> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    if response.len() == 0 {
+    if response.is_empty() {
         warn!("Cannot parse: {}", msg);
         Ok("Err, sorry, I can't roll that. Maybe you need some /help ?".to_owned())
     } else {
@@ -106,9 +106,9 @@ pub fn roll_results(msg: &str) -> Result<Vec<Roll>, DieFormatError> {
         if msg != ""
             && cap
                 .name("num")
-                .or(cap.name("face"))
-                .or(cap.name("bonus_sign"))
-                .or(cap.name("bonus_value"))
+                .or_else(|| cap.name("face"))
+                .or_else(|| cap.name("bonus_sign"))
+                .or_else(|| cap.name("bonus_value"))
                 == None
         {
             continue;

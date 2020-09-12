@@ -106,7 +106,7 @@ impl Bot {
         trace!("Got callback: {:?}", callback_query.data);
         let callback_query = callback_query.clone();
         if let (Some(data), Some(msg)) = (callback_query.data, callback_query.message) {
-            let (cmd, arg) = if let Some(sep_i) = data.find(" ") {
+            let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
                 if sep_i < data.len() - 1 {
                     (&data[0..sep_i], &data[sep_i + 1..data.len()])
                 } else {
@@ -133,88 +133,81 @@ impl Bot {
         }
 
         let start_processing = Instant::now();
-        match &message.kind {
-            MessageKind::Text { data, entities } => {
-                trace!("Got message: {:?}", data);
-                // No command was specified, but maybe it is a response to the previous command
-                if entities.is_empty() {
-                    if let Some(MessageOrChannelPost::Message(reply)) =
-                        message.reply_to_message.clone().map(|reply| *reply)
+        if let MessageKind::Text { data, entities } = &message.kind {
+            trace!("Got message: {:?}", data);
+            // No command was specified, but maybe it is a response to the previous command
+            if entities.is_empty() {
+                if let Some(MessageOrChannelPost::Message(reply)) =
+                    message.reply_to_message.clone().map(|reply| *reply)
+                {
+                    if let MessageKind::Text {
+                        data: reply_data,
+                        entities: _,
+                    } = reply.kind
                     {
-                        if let MessageKind::Text {
-                            data: reply_data,
-                            entities: _,
-                        } = reply.kind
-                        {
-                            // reply_data contains our own message generated in `search_item` function, e.g.: "What item should I look for? ..."
-                            // The second word is our collection name
-                            let mut iter = reply_data.split_whitespace();
-                            let _ = iter.next();
+                        // reply_data contains our own message generated in `search_item` function, e.g.: "What item should I look for? ..."
+                        // The second word is our collection name
+                        let mut iter = reply_data.split_whitespace();
+                        let _ = iter.next();
 
-                            if let Some(collection) = iter.next() {
-                                self.execute_command(collection, data, &message).await?;
-                            }
+                        if let Some(collection) = iter.next() {
+                            self.execute_command(collection, data, &message).await?;
                         }
                     }
-                    return Ok(());
                 }
+                return Ok(());
+            }
 
-                let mut entities_iter = entities.into_iter().peekable();
+            let mut entities_iter = entities.iter().peekable();
 
-                while let Some(entity) = entities_iter.next() {
-                    match entity.kind {
-                        MessageEntityKind::BotCommand => {
-                            let (cmd, arg) =
-                                self.parse_command(data, &entity, entities_iter.peek());
+            while let Some(entity) = entities_iter.next() {
+                if let MessageEntityKind::BotCommand = entity.kind {
+                    let (cmd, arg) = self.parse_command(data, &entity, entities_iter.peek());
 
-                            let timer = REQUEST_HISTOGRAM
-                                .with_label_values(&[cmd.as_ref()])
-                                .start_timer();
+                    let timer = REQUEST_HISTOGRAM
+                        .with_label_values(&[cmd.as_ref()])
+                        .start_timer();
 
-                            let cmd_result = self.execute_command(&cmd, &arg, &message).await;
+                    let cmd_result = self.execute_command(&cmd, &arg, &message).await;
 
-                            timer.observe_duration();
+                    timer.observe_duration();
 
-                            let user_id: i64 = message.from.id.into();
-                            let chat_type = chat_type_to_string(&message.chat);
-                            let request = message.text().unwrap_or_default();
+                    let user_id: i64 = message.from.id.into();
+                    let chat_type = chat_type_to_string(&message.chat);
+                    let request = message.text().unwrap_or_default();
 
-                            MESSAGE_COUNTER
-                                .with_label_values(&[
-                                    format!("{}", user_id).as_str(),
-                                    chat_type,
-                                    cmd.as_ref(),
-                                ])
-                                .inc();
+                    MESSAGE_COUNTER
+                        .with_label_values(&[
+                            format!("{}", user_id).as_str(),
+                            chat_type,
+                            cmd.as_ref(),
+                        ])
+                        .inc();
 
-                            DB.log_message(
-                                user_id,
-                                chat_type,
-                                request,
-                                &cmd_result,
-                                Instant::now()
-                                    .checked_duration_since(start_processing)
-                                    .unwrap()
-                                    .as_millis() as u64,
-                            );
+                    DB.log_message(
+                        user_id,
+                        chat_type,
+                        request,
+                        &cmd_result,
+                        Instant::now()
+                            .checked_duration_since(start_processing)
+                            .unwrap()
+                            .as_millis() as u64,
+                    );
 
-                            if let Err(err) = cmd_result {
-                                ERROR_COUNTER.with_label_values(&[cmd.as_ref()]).inc();
-                                error!("Error while processing message {}: {:#?}", data, err);
-                                self.report_error(
-                                    message.clone(),
-                                    cmd.clone().to_owned(),
-                                    data.clone(),
-                                    err,
-                                )
-                                .await?;
-                            }
-                        }
-                        _ => {}
+                    if let Err(err) = cmd_result {
+                        ERROR_COUNTER.with_label_values(&[cmd.as_ref()]).inc();
+                        error!("Error while processing message {}: {:#?}", data, err);
+                        self.report_error(
+                            message.clone(),
+                            cmd.clone().to_owned(),
+                            data.clone(),
+                            err,
+                        )
+                        .await?;
                     }
                 }
             }
-            _ => {}
         }
 
         Ok(())
@@ -226,7 +219,7 @@ impl Bot {
         arg: &str,
         message: &Message,
     ) -> Result<Option<String>, BotError> {
-        match cmd.as_ref() {
+        match cmd {
             // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
             // The returned string value is used to log request-response pair into the database
             "help" | "h" | "about" | "start" => self.help(message, arg).await,
@@ -477,7 +470,7 @@ impl Bot {
 
     fn parse_command(
         &self,
-        data: &String,
+        data: &str,
         entity: &MessageEntity,
         next_entity: Option<&&MessageEntity>,
     ) -> (String, String) {
@@ -507,7 +500,7 @@ impl Bot {
         // e.g.: /roll_2d8@bot_name
         let (cmd, arg) = if arg.is_empty() {
             let decoded_cmd = tg_decode(cmd);
-            let mut iter = decoded_cmd.split("_");
+            let mut iter = decoded_cmd.split('_');
             (
                 iter.next().unwrap_or(cmd).to_owned(),
                 iter.collect::<Vec<&str>>().join(" "),
@@ -522,12 +515,12 @@ impl Bot {
 
 pub fn get_connector() -> Box<dyn Connector> {
     env::var("roll_bot_http_proxy")
-        .or(env::var("ROLL_BOT_HTTP_PROXY"))
-        .or(env::var("http_proxy"))
-        .or(env::var("HTTP_PROXY"))
-        .or(env::var("https_proxy"))
-        .or(env::var("HTTPS_PROXY"))
-        .map_err(|err| Into::<Box<dyn Error>>::into(err))
+        .or_else(|_| env::var("ROLL_BOT_HTTP_PROXY"))
+        .or_else(|_| env::var("http_proxy"))
+        .or_else(|_| env::var("HTTP_PROXY"))
+        .or_else(|_| env::var("https_proxy"))
+        .or_else(|_| env::var("HTTPS_PROXY"))
+        .map_err(Into::<Box<dyn Error>>::into)
         .and_then(|proxy_url| {
             info!("Running with proxy: {}", proxy_url);
             let connector = HttpsConnector::new();
@@ -537,7 +530,7 @@ pub fn get_connector() -> Box<dyn Connector> {
                 Box::new(HyperConnector::new(Client::builder().build(connector)));
             Ok(connector)
         })
-        .unwrap_or(default_connector())
+        .unwrap_or_else(|_| default_connector())
 }
 
 pub fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
@@ -602,7 +595,7 @@ fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardM
             }
             "recharge" => {
                 if arg1.is_empty() {
-                    format!("(Recharge 6)")
+                    "(Recharge 6)".to_string()
                 } else {
                     format!("(Recharge {}-6)", arg1)
                 }

@@ -33,7 +33,7 @@ impl Entry for Document {
         let page = self.get_i64("page");
         let srd = self.get_bool("srd");
 
-        let mut result = format!("{}", source);
+        let mut result = source.to_string();
 
         if let Ok(page) = page {
             result.push_str(&format!(", page {}", page));
@@ -88,7 +88,7 @@ impl Entry for Document {
             "entries" => {
                 let s = match v {
                     Bson::Array(arr) => arr
-                        .into_iter()
+                        .iter()
                         .map(|bs| simple_format(bs))
                         .collect::<Vec<String>>()
                         .join("\n\n"),
@@ -131,7 +131,7 @@ pub trait EntryArrayUtils<T: ?Sized> {
 impl<T: ?Sized> EntryArrayUtils<T> for Document {
     fn get_array_of(&self, key: &str, f: fn(&Bson) -> Option<&T>) -> Option<Vec<&T>> {
         let arr = self.get_array(key).ok()?;
-        let result = arr.into_iter().filter_map(|bs| f(bs)).collect::<Vec<_>>();
+        let result = arr.iter().filter_map(|bs| f(bs)).collect::<Vec<_>>();
         result.to_option()
     }
 }
@@ -143,7 +143,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
             "list" => {
                 let items = entry.get_array("items").ok()?;
                 items
-                    .into_iter()
+                    .iter()
                     .filter_map(|bs| format_entry(bs))
                     .map(|s| format!("\t• {}", s))
                     .collect::<Vec<_>>()
@@ -151,16 +151,18 @@ fn format_entry(entry: &Bson) -> Option<String> {
             }
             "item" => {
                 let name = entry.get_str("name").ok()?;
-                let entry = entry.get_string("entry").or(entry
-                    .get_array("entries")
-                    .map(|array| {
-                        array
-                            .into_iter()
-                            .filter_map(format_entry)
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                    .ok())?;
+                let entry = entry.get_string("entry").or_else(|| {
+                    entry
+                        .get_array("entries")
+                        .map(|array| {
+                            array
+                                .iter()
+                                .filter_map(format_entry)
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                        .ok()
+                })?;
 
                 format!("{}: {}", name, entry)
             }
@@ -185,12 +187,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
                     .set_table_width(35);
 
                 if let Some(headers) = entry.get_array_of("colLabels", Bson::as_str) {
-                    table.set_header(Row::from(
-                        headers
-                            .iter()
-                            .map(|header| Cell::new(header))
-                            .collect::<Vec<_>>(),
-                    ));
+                    table.set_header(Row::from(headers.iter().map(Cell::new).collect::<Vec<_>>()));
                 }
 
                 entry.get_array("rows").ok()?.iter().for_each(|row| {
@@ -240,12 +237,12 @@ fn simple_format(bs: &Bson) -> String {
         Bson::FloatingPoint(num) => format!("{}", num),
         Bson::String(s) => s.to_owned(),
         Bson::Array(arr) => arr
-            .into_iter()
+            .iter()
             .map(|bs| simple_format(bs))
             .collect::<Vec<String>>()
             .join(", "),
         Bson::Document(doc) => doc
-            .into_iter()
+            .iter()
             .map(|(k, v)| format!("{}: {}", k, simple_format(v)))
             .collect::<Vec<_>>()
             .join(", "),

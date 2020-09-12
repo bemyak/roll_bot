@@ -1,5 +1,5 @@
-use crate::DB;
 use super::{Capitalizable, Entry, EntryArrayUtils, EntryUtils, FilterJoinable, Optionable};
+use crate::DB;
 use ejdb::bson::{Bson, Document};
 use ordinal::Ordinal;
 
@@ -9,7 +9,7 @@ pub trait Monster: Entry {
 
 impl Monster for Document {
     fn format_monster(&self) -> Option<String> {
-        let name = self.get_short_name().or(self.get_name())?;
+        let name = self.get_short_name().or_else(|| self.get_name())?;
         let mut result = format!("*{}*", name);
 
         if let Some(val) = self.get_cr() {
@@ -96,7 +96,7 @@ impl Monster for Document {
         if let Some(val) = self.get_legendary() {
             result.push_str("\n\n*Legendary Actions*\n");
             if let Some(val) = self.get_legendary_header() {
-                result.push_str(&format!("{}", val.join("\n")));
+                result.push_str(&val.join("\n"));
             }
             result.push_str(&format!("\n{}", val));
         }
@@ -104,14 +104,14 @@ impl Monster for Document {
             let legendary_actions = DB.get_item("legendaryGroup", &val).ok().flatten();
             if let Some(val) = legendary_actions {
                 if let Some(val) = val.format_legendary_group() {
-                    result.push_str(&format!("{}", val));
+                    result.push_str(&val);
                 }
             }
         }
         if let Some(val) = self.get_mythic() {
             result.push_str("\n\n*Mythic Actions*\n");
             if let Some(val) = self.get_mythic_header() {
-                result.push_str(&format!("{}", val.join("\n")));
+                result.push_str(&val.join("\n"));
             }
             result.push_str(&format!("\n{}", val));
         }
@@ -161,7 +161,7 @@ impl MonsterPrivate for Document {
         self.get_str("shortName")
             .ok()
             .map(str::to_string)
-            .or(self.get_name())
+            .or_else(|| self.get_name())
     }
     fn get_level(&self) -> Option<String> {
         self.get_i64("level")
@@ -187,19 +187,16 @@ impl MonsterPrivate for Document {
         };
 
         let tags = type_doc.get_array_of("tags", Bson::as_str);
-        match tags {
-            Some(tags) => {
-                type_.push_str(&format!(" ({})", tags.join(", ")));
-            }
-            None => {}
-        };
+        if let Some(tags) = tags {
+            type_.push_str(&format!(" ({})", tags.join(", ")));
+        }
 
         Some(type_)
     }
     fn get_alignment(&self) -> Option<String> {
         let arr = self.get_array("alignment").ok()?;
         let result = arr
-            .into_iter()
+            .iter()
             .filter_map(|element| match element {
                 Bson::String(str) => Some(alignment_to_string(str).to_string()),
                 Bson::Document(doc) => match doc.get("special") {
@@ -346,9 +343,9 @@ impl MonsterPrivate for Document {
             .flatten()
     }
     fn get_legendary_header(&self) -> Option<Vec<String>> {
-        let name = self.get_name().unwrap_or("It".to_string());
+        let name = self.get_name().unwrap_or_else(|| "It".to_string());
         let num = self.get_i64("legendaryActions").unwrap_or(3);
-        self.get_entries("legendaryHeader").or(Some(vec![format!(
+        self.get_entries("legendaryHeader").or_else(|| Some(vec![format!(
             "{0} can take {1} legendary actions, choosing from the options below. Only one legendary action can be used at a time and only at the end of another creature's turn. {0} regains spent legendary actions at the start of its turn.",
             name,
             num
@@ -402,7 +399,7 @@ impl MonsterUtils for Document {
     }
     fn format_damage_property(&self, key: &str) -> Option<String> {
         let arr = self.get_array(key).ok()?;
-        arr.into_iter()
+        arr.iter()
             .filter_map(|bs| match bs {
                 Bson::String(s) => Some(s.to_string()),
                 Bson::Document(doc) => match doc.get_str("special") {
@@ -423,11 +420,10 @@ impl MonsterUtils for Document {
     fn format_spell_frequency(&self, key: &str) -> Option<Vec<String>> {
         let doc = self.get_document(key).ok()?;
         doc.keys()
-            .into_iter()
             .filter_map(|k| {
                 doc.get_array_of(k, Bson::as_str).map(|spells| {
                     let spells = spells.join("\n");
-                    if k.ends_with("e") {
+                    if k.ends_with('e') {
                         let lvl = k.replace("e", "");
                         format!("{}/{} each: {}", lvl, key, spells)
                     } else {

@@ -94,7 +94,7 @@ fn should_update(cur_ver: Option<&String>, ver: Option<&str>) -> bool {
     }
 }
 
-fn get_latest_ver(changelog: &Vec<JsonValue>) -> Option<&str> {
+fn get_latest_ver(changelog: &[JsonValue]) -> Option<&str> {
     let last = changelog.last()?;
     let doc = last.as_object()?;
     let ver = doc.get("ver")?;

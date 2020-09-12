@@ -61,7 +61,7 @@ impl Spell for Document {
         let times = self.get_array("time").ok()?;
 
         times
-            .into_iter()
+            .iter()
             .map(|time| time.as_document())
             .filter_map(identity)
             .filter_map(|time| {
@@ -102,7 +102,7 @@ impl Spell for Document {
         let durations = self.get_array("duration").ok()?;
 
         durations
-            .into_iter()
+            .iter()
             .filter_map(|bs| bs.as_document())
             .filter_map(|doc| get_duration(doc))
             .collect::<Vec<_>>()

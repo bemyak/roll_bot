@@ -23,8 +23,8 @@ impl Abbreviation for Document {
 }
 
 fn get_templated(abbr: &Document, name: &str, item: &Document) -> Option<String> {
-    let prop_regex = Regex::new(r#"{{\s?prop_name\s?}}"#).unwrap();
-    let item_regex = Regex::new(r"{{\s?item\.(.+?)\s?}}").unwrap();
+    let prop_regex = Regex::new(r#"\{\{\s?prop_name\s?}}"#).unwrap();
+    let item_regex = Regex::new(r#"\{\{\s?item\.(.+?)\s?}}"#).unwrap();
     let template = abbr.get_str("template").ok()?;
 
     prop_regex.replace_all(template, name);
@@ -34,7 +34,7 @@ fn get_templated(abbr: &Document, name: &str, item: &Document) -> Option<String>
                 return simple_format(bson);
             }
         }
-        return "".to_string();
+        "".to_string()
     });
 
     Some(template.to_string())

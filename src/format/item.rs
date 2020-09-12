@@ -1,5 +1,5 @@
-use crate::DB;
 use super::{abbreviation::Abbreviation, cost_to_string, Capitalizable, Entry, FilterJoinable};
+use crate::DB;
 use ejdb::bson::{Bson, Document};
 use std::convert::identity;
 
@@ -150,7 +150,7 @@ impl Item for Document {
         let mut tags = vec![self.get_weapon_category()];
 
         let mut push_bool = |tag_name: &str| {
-            if let Some(tag) = self.get_bool(tag_name).ok() {
+            if let Ok(tag) = self.get_bool(tag_name) {
                 if tag {
                     tags.push(Some(tag_name.to_string()))
                 }
@@ -198,14 +198,14 @@ impl Item for Document {
     fn get_properties(&self) -> Option<Vec<String>> {
         let properties = self.get_array("property").ok()?;
         let properties = properties
-            .into_iter()
+            .iter()
             .filter_map(Bson::as_str)
             .map(|t| t.to_string())
             // .filter_map(|property| db.get_abbreviation("itemProperty", property).ok().flatten())
             // .filter_map(|abbr| abbr.get_entries("entries"))
             // .flatten()
             .collect::<Vec<_>>();
-        if properties.len() == 0 {
+        if properties.is_empty() {
             None
         } else {
             Some(properties)
@@ -261,11 +261,11 @@ impl Item for Document {
     fn get_loot_tables(&self) -> Option<Vec<String>> {
         let properties = self.get_array("lootTables").ok()?;
         let properties = properties
-            .into_iter()
+            .iter()
             .filter_map(Bson::as_str)
             .map(|property| property.to_string())
             .collect::<Vec<_>>();
-        if properties.len() == 0 {
+        if properties.is_empty() {
             None
         } else {
             Some(properties)
@@ -280,7 +280,7 @@ impl Item for Document {
     fn get_pack_contents(&self) -> Option<Vec<String>> {
         let properties = self.get_array("packContents").ok()?;
         let properties = properties
-            .into_iter()
+            .iter()
             .filter_map(|pack| match pack {
                 Bson::String(s) => Some(s.to_string()),
                 Bson::Document(d) => {
@@ -292,7 +292,7 @@ impl Item for Document {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        if properties.len() == 0 {
+        if properties.is_empty() {
             None
         } else {
             Some(properties)
