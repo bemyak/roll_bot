@@ -134,7 +134,15 @@ impl Bot {
 
         let start_processing = Instant::now();
         if let MessageKind::Text { data, entities } = &message.kind {
-            trace!("Got message: {:?}", data);
+            trace!(
+                "Got message from @{}: {}",
+                message
+                    .from
+                    .username
+                    .as_ref()
+                    .unwrap_or(&"unknown".to_string()),
+                data
+            );
             // No command was specified, but maybe it is a response to the previous command
             if entities.is_empty() {
                 if let Some(MessageOrChannelPost::Message(reply)) =

@@ -81,7 +81,7 @@ pub fn roll_dice(msg: &str) -> Result<String, DieFormatError> {
 
 pub fn roll_results(msg: &str) -> Result<Vec<Roll>, DieFormatError> {
     lazy_static! {
-        static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+))?\s*(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?").unwrap();
+        static ref DICE_REGEX: Regex = Regex::new(r"(?P<num>\+|\-|\d+)?(?:(?:d|к|д)(?P<face>\d+))?\s*(?:(?P<bonus_sign>\+|\-|\*|/)\s*(?P<bonus_value>\d+))?(?:[\s]|$)").unwrap();
     }
 
     const MAX_ROLLS: usize = 20;
