@@ -364,7 +364,7 @@ impl Bot {
                     message
                         .chat
                         .text(format!(
-                            "What {} should I look for? Please, reply with a name:",
+                            "What {} should I look for? Please, *reply* on this message with a name:",
                             lookup_item.get_default_command()
                         ))
                         .reply_markup(force_reply),
