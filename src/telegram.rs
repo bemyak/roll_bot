@@ -367,6 +367,7 @@ impl Bot {
                             "What {} should I look for? Please, *reply* on this message with a name:",
                             lookup_item.get_default_command()
                         ))
+                        .parse_mode(ParseMode::Markdown)
                         .reply_markup(force_reply),
                 )
                 .await?;
