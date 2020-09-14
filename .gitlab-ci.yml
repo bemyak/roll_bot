@@ -49,7 +49,6 @@ deploy:
     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
     - chmod 0600 ~/.ssh/id_rsa
     - cd deploy/ansible
-    - ansible-galaxy install -r requirements.yml
     - wget $INVENTORY_URL
     - ansible-playbook -i ./inventory -u ubuntu site.yml
   only:
