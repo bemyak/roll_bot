@@ -1,7 +1,9 @@
 use std::error::Error;
 
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::{
+    service::{make_service_fn, service_fn},
+    Body, Method, Request, Response, Server, StatusCode,
+};
 use prometheus::{Encoder, HistogramVec, IntCounterVec, IntGaugeVec, TextEncoder};
 
 pub const METRICS_PORT: u16 = 9889;

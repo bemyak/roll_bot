@@ -14,7 +14,7 @@ comfy-table      = { version = "1.1" }
 ejdb             = { version = "0.4" }
 futures          = { version = "0.3", default-features = false }
 hyper            = { version = "0.13", default-features = false }
-hyper-proxy      = { version = "0.7", default-features = false, features = ["rustls"] }
+hyper-proxy      = { version = "0.8", default-features = false, features = ["rustls"] }
 hyper-rustls     = { version = "0.21" }
 lazy_static      = { version = "1.4" }
 log              = { version = "0.4", default-features = false }
