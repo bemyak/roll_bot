@@ -396,7 +396,7 @@ impl Bot {
                     message,
                     &msg,
                     Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
-                    vec![' '],
+                    vec!['\n'],
                 )
                 .await?;
                 Ok(Some(msg))
@@ -436,7 +436,7 @@ impl Bot {
                     message,
                     &msg,
                     Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
-                    vec![' '],
+                    vec!['\n'],
                 )
                 .await?;
 
