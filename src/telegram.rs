@@ -116,8 +116,6 @@ impl Bot {
                 (data.as_ref(), "")
             };
 
-            trace!("Callback received: cmd=\"{}\", arg=\"{}\"", cmd, arg);
-
             self.execute_command(cmd, arg, &msg).await.map(|_| ())
         } else {
             Ok(())

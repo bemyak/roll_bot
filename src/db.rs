@@ -336,9 +336,9 @@ mod test {
         let db = DndDatabase::new(get_db_path()).unwrap();
         let cache = db.cache.read().unwrap();
         let engine = cache.get("spell").unwrap();
-        assert!(engine.search("fireball").len() > 0);
+        assert!(!engine.search("fireball").is_empty());
         let engine = cache.get("item").unwrap();
-        assert!(engine.search("bag of").len() > 0);
+        assert!(!engine.search("bag of").is_empty());
     }
 
     fn get_db_path() -> &'static str {
