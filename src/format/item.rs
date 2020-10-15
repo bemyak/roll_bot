@@ -20,7 +20,6 @@ pub trait Item: Entry {
     fn get_speed(&self) -> Option<i64>;
     fn get_bonus_ac(&self) -> Option<String>;
     fn get_bonus_weapon_attack(&self) -> Option<String>;
-    fn get_pack_contents(&self) -> Option<Vec<String>>;
     fn get_ammo_type(&self) -> Option<String>;
     fn get_properties(&self) -> Option<Vec<&str>>;
     fn get_weight(&self) -> Option<i64>;
@@ -114,9 +113,6 @@ impl Item for Document {
         }
         if let Some(bonus_weapon_attack) = self.get_bonus_weapon_attack() {
             s.push_str(&format!("\n*Attack Bonus*: {}", bonus_weapon_attack));
-        }
-        if let Some(pack_contents) = self.get_pack_contents() {
-            s.push_str(&format!("\n*In pack*: {}", pack_contents.join(" ")));
         }
 
         if let Some(entries) = self.get_entries("entries") {
@@ -266,27 +262,6 @@ impl Item for Document {
     }
     fn get_bonus_weapon_attack(&self) -> Option<String> {
         self.get_str("bonusWeaponAttack").map(str::to_string).ok()
-    }
-    fn get_pack_contents(&self) -> Option<Vec<String>> {
-        let properties = self.get_array("packContents").ok()?;
-        let properties = properties
-            .iter()
-            .filter_map(|pack| match pack {
-                Bson::String(s) => Some(s.to_string()),
-                Bson::Document(d) => {
-                    let quantity = d.get_i64("quantity").map(|i| format!("{}", i)).ok();
-                    let special = d.get_str("special").map(str::to_string).ok();
-                    let item = d.get_str("item").map(|s| format!("{{@item {}}}", s)).ok();
-                    vec![quantity, item, special].filter_join(" ")
-                }
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        if properties.is_empty() {
-            None
-        } else {
-            Some(properties)
-        }
     }
     fn get_ammo_type(&self) -> Option<String> {
         self.get_str("ammoType")
