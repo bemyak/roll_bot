@@ -104,7 +104,7 @@ impl Bot {
 
     async fn process_callback_query(&self, callback_query: &CallbackQuery) -> Result<(), BotError> {
         trace!(
-            "Got callback from {:?}: {:?}",
+            "Got callback from @{}: {:?}",
             callback_query
                 .from
                 .username
