@@ -103,7 +103,15 @@ impl Bot {
     }
 
     async fn process_callback_query(&self, callback_query: &CallbackQuery) -> Result<(), BotError> {
-        trace!("Got callback: {:?}", callback_query.data);
+        trace!(
+            "Got callback from {:?}: {:?}",
+            callback_query
+                .from
+                .username
+                .as_ref()
+                .unwrap_or(&"unknown".to_string()),
+            callback_query.data
+        );
         let callback_query = callback_query.clone();
         if let (Some(data), Some(msg)) = (callback_query.data, callback_query.message) {
             let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
