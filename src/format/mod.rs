@@ -187,7 +187,15 @@ fn format_entry(entry: &Bson) -> Option<String> {
                     .set_table_width(35);
 
                 if let Some(headers) = entry.get_array_of("colLabels", Bson::as_str) {
-                    table.set_header(Row::from(headers.iter().map(Cell::new).collect::<Vec<_>>()));
+                    table.set_header(Row::from(
+                        headers
+                            .iter()
+                            .map(|h| {
+                                let h = demarkup(h);
+                                Cell::new(h)
+                            })
+                            .collect::<Vec<_>>(),
+                    ));
                 }
 
                 entry.get_array("rows").ok()?.iter().for_each(|row| {
@@ -287,16 +295,16 @@ pub fn cost_to_string(cost: i64) -> String {
 
 fn demarkup(s: &str) -> String {
     lazy_static! {
-        static ref BOLD: Regex = Regex::new(r"(.*)\*(.+)\*(.*)").unwrap();
-        static ref ITALIC: Regex = Regex::new(r"(.*)_(.+)_(.*)").unwrap();
-        static ref STRIKE: Regex = Regex::new(r"(.*)\~(.+)\~(.*)").unwrap();
-        static ref MONO: Regex = Regex::new(r"(.*)`(.+)`(.*)").unwrap();
+        static ref BOLD: Regex = Regex::new(r"\*(.+?)\*").unwrap();
+        static ref ITALIC: Regex = Regex::new(r"_(.+?)_").unwrap();
+        static ref STRIKE: Regex = Regex::new(r"\~(.+?)\~").unwrap();
+        static ref MONO: Regex = Regex::new(r"`(.+?)`").unwrap();
     }
 
-    let s = BOLD.replace_all(&s, "$1$2$3");
-    let s = ITALIC.replace_all(&s, "$1$2$3");
-    let s = STRIKE.replace_all(&s, "$1$2$3");
-    let s = MONO.replace_all(&s, "$1$2$3");
+    let s = BOLD.replace_all(&s, "$1");
+    let s = ITALIC.replace_all(&s, "$1");
+    let s = STRIKE.replace_all(&s, "$1");
+    let s = MONO.replace_all(&s, "$1");
 
     s.into()
 }
