@@ -1,4 +1,7 @@
-use std::{borrow::Cow, cmp::min, env, error::Error, mem, sync::Arc, time::Instant};
+use std::{
+    borrow::Cow, cmp::min, env, error::Error, iter::Peekable, mem, slice::Iter, sync::Arc,
+    time::Instant,
+};
 
 use futures::StreamExt;
 use hyper::Client;
@@ -176,7 +179,7 @@ impl Bot {
 
             while let Some(entity) = entities_iter.next() {
                 if let MessageEntityKind::BotCommand = entity.kind {
-                    let (cmd, arg) = self.parse_command(data, &entity, entities_iter.peek());
+                    let (cmd, arg) = self.parse_command(data, &entity, entities_iter.clone());
 
                     let timer = REQUEST_HISTOGRAM
                         .with_label_values(&[cmd.as_ref()])
@@ -483,7 +486,7 @@ impl Bot {
         &self,
         data: &str,
         entity: &MessageEntity,
-        next_entity: Option<&&MessageEntity>,
+        mut iter: Peekable<Iter<MessageEntity>>,
     ) -> (String, String) {
         // We need to cut off the leading "/"
         let cmd_start = entity.offset as usize + 1;
@@ -504,7 +507,9 @@ impl Bot {
         let cmd = &data[cmd_start..name_start];
 
         let arg_start = cmd_end;
-        let arg_end = next_entity.map_or(data.len(), |next_entity| next_entity.offset as usize);
+        let arg_end = iter
+            .peek()
+            .map_or(data.len(), |next_entity| next_entity.offset as usize);
         let arg = data[arg_start..arg_end].trim();
 
         // If there is no args, it could be that they are specified as part of the command
@@ -518,6 +523,26 @@ impl Bot {
             )
         } else {
             (cmd.to_owned().to_lowercase(), arg.to_owned())
+        };
+
+        let arg = if arg.is_empty() {
+            let mut args = Vec::new();
+            for entity in iter {
+                match entity.kind {
+                    MessageEntityKind::Italic
+                    | MessageEntityKind::Bold
+                    | MessageEntityKind::Code => {
+                        args.push(
+                            &data[(entity.offset as usize)
+                                ..(entity.offset + entity.length) as usize],
+                        );
+                    }
+                    _ => break,
+                }
+            }
+            args.join(" ")
+        } else {
+            "".to_owned()
         };
 
         (cmd.to_lowercase(), arg)
@@ -650,9 +675,6 @@ fn split(text: &str) -> Vec<String> {
 
     let result = fix_tags(&result);
 
-    for r in result.iter() {
-        debug!("{}", r);
-    }
     result
 }
 
@@ -693,7 +715,6 @@ fn fix_tags(split: &[&str]) -> Vec<String> {
             }
             for (re, t) in TAGS.iter() {
                 if re.captures_iter(s.as_ref()).count() % 2 != 0 {
-                    debug!("Missing {}", t);
                     s.push_str(t);
                     tag_to_fix = Some(t);
                 }
