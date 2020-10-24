@@ -316,8 +316,7 @@ impl Bot {
                 _ => err.to_string(),
             },
         };
-        self.split_and_send(message, &response, None, vec!['\n'])
-            .await?;
+        self.split_and_send(message, &response, None).await?;
         Ok(Some(response))
     }
 
@@ -402,7 +401,6 @@ impl Bot {
                     message,
                     &msg,
                     Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
-                    vec!['\n'],
                 )
                 .await?;
                 Ok(Some(msg))
@@ -442,7 +440,6 @@ impl Bot {
                     message,
                     &msg,
                     Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
-                    vec!['\n'],
                 )
                 .await?;
 
@@ -456,22 +453,21 @@ impl Bot {
         msg: &Message,
         text: &str,
         keyboard: Option<ReplyMarkup>,
-        separators: Vec<char>,
     ) -> Result<(), telegram_bot::Error> {
         if text.is_empty() {
             return Ok(());
         }
 
-        let messages = split(text, separators);
+        let messages = split(text);
         let (last, all) = messages.split_last().unwrap();
 
         for text in all {
             self.api
-                .send(msg.chat.text(*text).parse_mode(ParseMode::Markdown))
+                .send(msg.chat.text(text).parse_mode(ParseMode::Markdown))
                 .await?;
         }
 
-        let mut answer = msg.chat.text(*last);
+        let mut answer = msg.chat.text(last);
 
         answer.parse_mode(ParseMode::Markdown);
 
@@ -633,7 +629,7 @@ fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardM
     mem::swap(text, &mut result.into_owned());
 }
 
-fn split(text: &str, separators: Vec<char>) -> Vec<&str> {
+fn split(text: &str) -> Vec<String> {
     const MAX_TEXT_LEN: usize = 4096;
     let mut result = Vec::new();
 
@@ -644,17 +640,7 @@ fn split(text: &str, separators: Vec<char>) -> Vec<&str> {
 
     while start < bytes.len() {
         let hard_end = min(start + MAX_TEXT_LEN, bytes.len());
-        end = {
-            if hard_end == bytes.len() {
-                hard_end
-            } else {
-                bytes[start..hard_end]
-                    .iter()
-                    .rposition(|c| separators.contains(&(*c as char)))
-                    .map(|i| i + start)
-                    .unwrap_or(hard_end)
-            }
-        };
+        end = get_end(bytes, start, hard_end);
 
         // We already know that it is a valid utf8
         let s = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) };
@@ -662,5 +648,57 @@ fn split(text: &str, separators: Vec<char>) -> Vec<&str> {
         start = end + 1;
     }
 
+    let result = fix_tags(&result);
+
+    for r in result.iter() {
+        debug!("{}", r);
+    }
     result
+}
+
+fn get_end(bytes: &[u8], start: usize, hard_end: usize) -> usize {
+    if hard_end == bytes.len() {
+        return hard_end;
+    }
+
+    for (i, byte) in bytes[start..hard_end].iter().enumerate().rev() {
+        let c = *byte as char;
+        if c == '\n' {
+            return start + i;
+        }
+    }
+    hard_end
+}
+
+fn fix_tags(split: &[&str]) -> Vec<String> {
+    lazy_static! {
+        static ref TAGS: [(Regex, &'static str); 4] = [
+            (Regex::new(r"(^|[^\\`])```([^`]|$)").unwrap(), "```"),
+            (Regex::new(r"(^|[^\\`])`([^`]|$)").unwrap(), "`"),
+            (Regex::new(r"(^|[^\\*])\*([^*]|$)").unwrap(), "*"),
+            (Regex::new(r"(^|[^\\_])_([^_]|$)").unwrap(), "_"),
+        ];
+    }
+
+    const MARKUP_TAGS: [&str; 4] = ["```", "`", "*", "_"];
+
+    let mut tag_to_fix: Option<&str> = None;
+    split
+        .iter()
+        .map(|s| {
+            let mut s = s.to_string();
+            if let Some(t) = tag_to_fix {
+                tag_to_fix = None;
+                s = t.to_string() + &s;
+            }
+            for (re, t) in TAGS.iter() {
+                if re.captures_iter(s.as_ref()).count() % 2 != 0 {
+                    debug!("Missing {}", t);
+                    s.push_str(t);
+                    tag_to_fix = Some(t);
+                }
+            }
+            s
+        })
+        .collect::<Vec<_>>()
 }

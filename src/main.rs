@@ -43,7 +43,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let log_config = simplelog::ConfigBuilder::new()
         .add_filter_allow_str("roll_bot")
         .build();
-    simplelog::SimpleLogger::init(simplelog::LevelFilter::Trace, log_config)?;
+    let log_level = if env::var("ROLL_BOT_USE_TEST_DB").is_ok() {
+        simplelog::LevelFilter::Debug
+    } else {
+        simplelog::LevelFilter::Trace
+    };
+    simplelog::SimpleLogger::init(log_level, log_config)?;
 
     task::spawn(async move { metrics::serve_metrics().await });
 
