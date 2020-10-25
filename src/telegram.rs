@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow, cmp::min, env, error::Error, iter::Peekable, mem, slice::Iter, sync::Arc,
-    time::Instant,
-};
+use std::{borrow::Cow, cmp::min, env, error::Error, mem, sync::Arc, time::Instant};
 
 use futures::StreamExt;
 use hyper::Client;
@@ -13,16 +10,14 @@ use telegram_bot::{
     prelude::*,
     reply_markup,
     types::reply_markup::*,
-    Api, CallbackQuery, GetMe, Message, MessageEntity, MessageEntityKind, MessageKind,
-    MessageOrChannelPost, ParseMode, Update, UpdateKind, User,
+    Api, CallbackQuery, GetMe, Message, MessageKind, MessageOrChannelPost, ParseMode, Update,
+    UpdateKind, User,
 };
 use thiserror::Error;
 use tokio::task;
 
 use crate::collection::{Collection, COMMANDS};
-use crate::format::{
-    db::*, item::Item, monster::Monster, roll::*, spell::*, telegram::*, utils::*,
-};
+use crate::format::{db::*, item::Item, monster::Monster, roll::*, spell::*, telegram::*};
 use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
 use crate::DB;
 use crate::PROJECT_URL;
@@ -175,54 +170,53 @@ impl Bot {
                 return Ok(());
             }
 
-            let mut entities_iter = entities.iter().peekable();
+            lazy_static! {
+                static ref CMD_REGEX: Regex =
+                    Regex::new(r"/(?P<cmd>\S+)(?:\s+(?P<arg>[^/]+))?").unwrap();
+            }
+            // Small trick to get type hints work for lazy static
+            let cmd_regex: &Regex = &*CMD_REGEX;
 
-            while let Some(entity) = entities_iter.next() {
-                if let MessageEntityKind::BotCommand = entity.kind {
-                    let (cmd, arg) = self.parse_command(data, &entity, entities_iter.clone());
+            let cmds = cmd_regex
+                .captures_iter(data)
+                .map(|cap| {
+                    let cmd = cap.name("cmd").unwrap().as_str();
+                    let arg = cap.name("arg").map_or("", |m| m.as_str());
+                    (cmd, arg)
+                })
+                .collect::<Vec<_>>();
 
-                    let timer = REQUEST_HISTOGRAM
-                        .with_label_values(&[cmd.as_ref()])
-                        .start_timer();
+            for (cmd, arg) in cmds {
+                let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
 
-                    let cmd_result = self.execute_command(&cmd, &arg, &message).await;
+                let cmd_result = self.execute_command(&cmd, &arg, &message).await;
 
-                    timer.observe_duration();
+                timer.observe_duration();
 
-                    let user_id: i64 = message.from.id.into();
-                    let chat_type = chat_type_to_string(&message.chat);
-                    let request = message.text().unwrap_or_default();
+                let user_id: i64 = message.from.id.into();
+                let chat_type = chat_type_to_string(&message.chat);
+                let request = message.text().unwrap_or_default();
 
-                    MESSAGE_COUNTER
-                        .with_label_values(&[
-                            format!("{}", user_id).as_str(),
-                            chat_type,
-                            cmd.as_ref(),
-                        ])
-                        .inc();
+                MESSAGE_COUNTER
+                    .with_label_values(&[format!("{}", user_id).as_str(), chat_type, cmd])
+                    .inc();
 
-                    DB.log_message(
-                        user_id,
-                        chat_type,
-                        request,
-                        &cmd_result,
-                        Instant::now()
-                            .checked_duration_since(start_processing)
-                            .unwrap()
-                            .as_millis() as u64,
-                    );
+                DB.log_message(
+                    user_id,
+                    chat_type,
+                    request,
+                    &cmd_result,
+                    Instant::now()
+                        .checked_duration_since(start_processing)
+                        .unwrap()
+                        .as_millis() as u64,
+                );
 
-                    if let Err(err) = cmd_result {
-                        ERROR_COUNTER.with_label_values(&[cmd.as_ref()]).inc();
-                        error!("Error while processing message {}: {:#?}", data, err);
-                        self.report_error(
-                            message.clone(),
-                            cmd.clone().to_owned(),
-                            data.clone(),
-                            err,
-                        )
+                if let Err(err) = cmd_result {
+                    ERROR_COUNTER.with_label_values(&[cmd]).inc();
+                    error!("Error while processing message {}: {:#?}", data, err);
+                    self.report_error(message.clone(), cmd.to_owned(), data.clone(), err)
                         .await?;
-                    }
                 }
             }
         }
@@ -481,72 +475,6 @@ impl Bot {
         self.api.send(answer).await?;
         Ok(())
     }
-
-    fn parse_command(
-        &self,
-        data: &str,
-        entity: &MessageEntity,
-        mut iter: Peekable<Iter<MessageEntity>>,
-    ) -> (String, String) {
-        // We need to cut off the leading "/"
-        let cmd_start = entity.offset as usize + 1;
-        let cmd_end = (entity.offset + entity.length) as usize;
-
-        // In group chats command might be provided in /command@bot_name format
-        // So, we need to check if it is us who were asked
-        let mut name_start = cmd_end;
-        if let Some(i) = data.rfind('@') {
-            if i + 1 < name_start {
-                let bot_name = data[i + 1..name_start].to_owned();
-                if Some(bot_name) == self.me.username {
-                    name_start = i
-                }
-            }
-        }
-
-        let cmd = &data[cmd_start..name_start];
-
-        let arg_start = cmd_end;
-        let arg_end = iter
-            .peek()
-            .map_or(data.len(), |next_entity| next_entity.offset as usize);
-        let arg = data[arg_start..arg_end].trim();
-
-        // If there is no args, it could be that they are specified as part of the command
-        // e.g.: /roll_2d8@bot_name
-        let (cmd, arg) = if arg.is_empty() {
-            let decoded_cmd = tg_decode(cmd);
-            let mut iter = decoded_cmd.split('_');
-            (
-                iter.next().unwrap_or(cmd).to_owned(),
-                iter.collect::<Vec<&str>>().join(" "),
-            )
-        } else {
-            (cmd.to_owned().to_lowercase(), arg.to_owned())
-        };
-
-        let arg = if arg.is_empty() {
-            let mut args = Vec::new();
-            for entity in iter {
-                match entity.kind {
-                    MessageEntityKind::Italic
-                    | MessageEntityKind::Bold
-                    | MessageEntityKind::Code => {
-                        args.push(
-                            &data[(entity.offset as usize)
-                                ..(entity.offset + entity.length) as usize],
-                        );
-                    }
-                    _ => break,
-                }
-            }
-            args.join(" ")
-        } else {
-            "".to_owned()
-        };
-
-        (cmd.to_lowercase(), arg)
-    }
 }
 
 pub fn get_connector() -> Box<dyn Connector> {
@@ -673,9 +601,7 @@ fn split(text: &str) -> Vec<String> {
         start = end + 1;
     }
 
-    let result = fix_tags(&result);
-
-    result
+    fix_tags(&result)
 }
 
 fn get_end(bytes: &[u8], start: usize, hard_end: usize) -> usize {
@@ -693,15 +619,6 @@ fn get_end(bytes: &[u8], start: usize, hard_end: usize) -> usize {
 }
 
 fn fix_tags(split: &[&str]) -> Vec<String> {
-    lazy_static! {
-        static ref TAGS: [(Regex, &'static str); 4] = [
-            (Regex::new(r"(^|[^\\`])```([^`]|$)").unwrap(), "```"),
-            (Regex::new(r"(^|[^\\`])`([^`]|$)").unwrap(), "`"),
-            (Regex::new(r"(^|[^\\*])\*([^*]|$)").unwrap(), "*"),
-            (Regex::new(r"(^|[^\\_])_([^_]|$)").unwrap(), "_"),
-        ];
-    }
-
     const MARKUP_TAGS: [&str; 4] = ["```", "`", "*", "_"];
 
     let mut tag_to_fix: Option<&str> = None;
@@ -713,8 +630,8 @@ fn fix_tags(split: &[&str]) -> Vec<String> {
                 tag_to_fix = None;
                 s = t.to_string() + &s;
             }
-            for (re, t) in TAGS.iter() {
-                if re.captures_iter(s.as_ref()).count() % 2 != 0 {
+            for t in MARKUP_TAGS.iter() {
+                if s.matches(t).count() % 2 != 0 {
                     s.push_str(t);
                     tag_to_fix = Some(t);
                 }
