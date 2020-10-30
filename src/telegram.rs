@@ -286,7 +286,7 @@ impl Bot {
     async fn help(&self, message: &Message, _arg: &str) -> Result<Option<String>, BotError> {
         lazy_static! {
             static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
-                ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://paypal.me/bemyak", "Chat with author" url "https://t.me/bemyak"]
+                ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://www.buymeacoffee.com/bemyak", "Chat with author" url "https://t.me/bemyak"]
             );
         }
         let help = help_message();
