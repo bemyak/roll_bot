@@ -1,7 +1,7 @@
 # DungeonBot
 Build status: [![build status](https://gitlab.com/bemyak/roll_bot/badges/master/pipeline.svg)](https://gitlab.com/bemyak/roll-bot/commits/master)
 
-Telegram Bot for D&D 5e players.
+Telegram Bot for D&D 5e players. You can test it [here](https://t.me/roll_bot).
 
 Implemented features:
 - [X] Roll a die
