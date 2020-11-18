@@ -89,6 +89,8 @@ impl Bot {
             UpdateKind::InlineQuery(_) => Ok(()),
             UpdateKind::CallbackQuery(msg) => self.process_callback_query(msg).await,
             UpdateKind::Error(_) => Ok(()),
+            UpdateKind::Poll(_) => Ok(()),
+            UpdateKind::PollAnswer(_) => Ok(()),
             UpdateKind::Unknown => Ok(()),
         };
 
@@ -111,7 +113,9 @@ impl Bot {
             callback_query.data
         );
         let callback_query = callback_query.clone();
-        if let (Some(data), Some(msg)) = (callback_query.data, callback_query.message) {
+        if let (Some(data), Some(MessageOrChannelPost::Message(msg))) =
+            (callback_query.data, callback_query.message)
+        {
             let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
                 if sep_i < data.len() - 1 {
                     (&data[0..sep_i], &data[sep_i + 1..data.len()])
