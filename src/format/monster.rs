@@ -207,7 +207,7 @@ impl MonsterPrivate for Document {
             })
             .collect::<Vec<_>>()
             .join(" ");
-        result.to_option()
+        result.into_option()
     }
     fn get_ac(&self) -> Option<String> {
         let acs = self.get_array_of("ac", Bson::as_document)?;
@@ -215,7 +215,7 @@ impl MonsterPrivate for Document {
             .filter_map(|doc| doc.format_ac_doc())
             .collect::<Vec<_>>()
             .join(" or ")
-            .to_option()
+            .into_option()
     }
     fn get_hp(&self) -> Option<String> {
         let hp = self.get_document("hp").ok()?;
@@ -241,7 +241,7 @@ impl MonsterPrivate for Document {
                 })
                 .collect::<Vec<_>>()
                 .join(", ")
-                .to_option(),
+                .into_option(),
             Bson::String(s) => Some(s.to_string()),
             Bson::I64(i) => Some(i.to_string()),
             _ => None,
@@ -272,7 +272,7 @@ impl MonsterPrivate for Document {
             .map(|(k, v)| format!("{} {}", k, v).capitalize())
             .collect::<Vec<_>>()
             .join(", ")
-            .to_option()
+            .into_option()
     }
     fn get_skill(&self) -> Option<String> {
         let fields = self.get_object_str_fields("skill")?;
@@ -281,7 +281,7 @@ impl MonsterPrivate for Document {
             .map(|(k, v)| format!("{} {}", k, v).capitalize())
             .collect::<Vec<_>>()
             .join(", ")
-            .to_option()
+            .into_option()
     }
     fn get_senses(&self) -> Option<String> {
         self.get_array_of("senses", Bson::as_str)
@@ -325,7 +325,7 @@ impl MonsterPrivate for Document {
             .filter_map(|doc| doc.format_spellcasting())
             .collect::<Vec<_>>()
             .join("\n")
-            .to_option()
+            .into_option()
     }
     fn get_trait(&self) -> Option<String> {
         self.get_named_entries("trait")
@@ -415,7 +415,7 @@ impl MonsterUtils for Document {
             })
             .collect::<Vec<_>>()
             .join(", ")
-            .to_option()
+            .into_option()
     }
     fn format_spell_frequency(&self, key: &str) -> Option<Vec<String>> {
         let doc = self.get_document(key).ok()?;
@@ -432,7 +432,7 @@ impl MonsterUtils for Document {
                 })
             })
             .collect::<Vec<_>>()
-            .to_option()
+            .into_option()
     }
     fn format_spells(&self, key: &str) -> Option<Vec<String>> {
         let doc = self.get_document(key).ok()?;
@@ -477,7 +477,7 @@ impl MonsterUtils for Document {
                 }
             })
             .collect::<Vec<_>>()
-            .to_option()
+            .into_option()
     }
     fn format_spellcasting(&self) -> Option<String> {
         let name = self.get_str("name").ok();
@@ -538,7 +538,7 @@ impl MonsterUtils for Document {
         if let Some(mythic) = mythic {
             result.push_str(&format!("\n\n*Mythic Effects*\n{}", mythic.join("\n")))
         }
-        result.to_option()
+        result.into_option()
     }
     fn get_stat(&self, stat: &str) -> Option<String> {
         let num = self.get_i64(stat).ok()?;

@@ -44,7 +44,7 @@ impl Entry for Document {
                 result.push_str(". Available in the SRD.");
             }
         } else {
-            result.push_str(".");
+            result.push('.');
         }
 
         Some(result)
@@ -65,7 +65,7 @@ impl Entry for Document {
             }
         }
 
-        result.to_option()
+        result.into_option()
     }
     fn get_named_entries(&self, key: &str) -> Option<String> {
         let entries = self.get_array_of(key, Bson::as_document)?;
@@ -78,7 +78,7 @@ impl Entry for Document {
             })
             .collect::<Vec<_>>()
             .join("\n")
-            .to_option()
+            .into_option()
     }
     fn format(&self) -> String {
         let mut res = String::new();
@@ -121,7 +121,7 @@ impl EntryUtils for Document {
                 }
             })
             .collect::<Vec<_>>()
-            .to_option()
+            .into_option()
     }
 }
 
@@ -132,7 +132,7 @@ impl<T: ?Sized> EntryArrayUtils<T> for Document {
     fn get_array_of(&self, key: &str, f: fn(&Bson) -> Option<&T>) -> Option<Vec<&T>> {
         let arr = self.get_array(key).ok()?;
         let result = arr.iter().filter_map(|bs| f(bs)).collect::<Vec<_>>();
-        result.to_option()
+        result.into_option()
     }
 }
 
@@ -237,7 +237,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
             return None;
         }
     }
-    .to_option()
+    .into_option()
 }
 
 fn simple_format(bs: &Bson) -> String {
@@ -339,7 +339,7 @@ where
             .map(|t| t.to_string())
             .collect::<Vec<_>>()
             .join(sep)
-            .to_option()
+            .into_option()
     }
 }
 
@@ -358,11 +358,11 @@ impl Capitalizable for String {
 }
 
 pub trait Optionable: Sized {
-    fn to_option(self) -> Option<Self>;
+    fn into_option(self) -> Option<Self>;
 }
 
 impl Optionable for String {
-    fn to_option(self) -> Option<Self> {
+    fn into_option(self) -> Option<Self> {
         if self.is_empty() {
             None
         } else {
@@ -371,7 +371,7 @@ impl Optionable for String {
     }
 }
 impl<T> Optionable for Vec<T> {
-    fn to_option(self) -> Option<Self> {
+    fn into_option(self) -> Option<Self> {
         if self.is_empty() {
             None
         } else {

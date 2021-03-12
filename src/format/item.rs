@@ -195,7 +195,7 @@ impl Item for Document {
         self.get_i64("weight").ok()
     }
     fn get_properties(&self) -> Option<Vec<&str>> {
-        self.get_array_of("property", Bson::as_str)?.to_option()
+        self.get_array_of("property", Bson::as_str)?.into_option()
     }
     fn get_attune(&self) -> Option<String> {
         let base = "requires attunement".to_string();

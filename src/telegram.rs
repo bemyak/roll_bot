@@ -72,26 +72,28 @@ impl Bot {
 
         let s = Arc::new(self);
 
-        while let Some(Ok(update)) = stream.next().await {
-            let s = s.clone();
-            task::spawn(async move {
-                s.process_update(update).await;
-            });
+        loop {
+            let update = stream.next().await;
+
+            match update {
+                Some(Ok(update)) => {
+                    let s = s.clone();
+                    task::spawn(async move {
+                        s.process_update(update).await;
+                    });
+                }
+                _ => {
+                    error!("Can't fetch telegram updates: {:?}", update)
+                }
+            }
         }
     }
 
     async fn process_update(&self, update: Update) {
         let result = match &update.kind {
             UpdateKind::Message(msg) => self.process_message(msg).await,
-            UpdateKind::EditedMessage(_) => Ok(()),
-            UpdateKind::ChannelPost(_) => Ok(()),
-            UpdateKind::EditedChannelPost(_) => Ok(()),
-            UpdateKind::InlineQuery(_) => Ok(()),
             UpdateKind::CallbackQuery(msg) => self.process_callback_query(msg).await,
-            UpdateKind::Error(_) => Ok(()),
-            UpdateKind::Poll(_) => Ok(()),
-            UpdateKind::PollAnswer(_) => Ok(()),
-            UpdateKind::Unknown => Ok(()),
+            _ => Ok(()),
         };
 
         if let Err(err) = result {
@@ -491,7 +493,7 @@ pub fn get_connector() -> Box<dyn Connector> {
         .map_err(Into::<Box<dyn Error>>::into)
         .and_then(|proxy_url| {
             info!("Running with proxy: {}", proxy_url);
-            let connector = HttpsConnector::new();
+            let connector = HttpsConnector::with_native_roots();
             let proxy = Proxy::new(Intercept::All, proxy_url.parse()?);
             let connector = ProxyConnector::from_proxy(connector, proxy)?;
             let connector: Box<dyn Connector> =
@@ -526,7 +528,7 @@ fn replace_bson_links(b: &mut Bson, keyboard: &mut InlineKeyboardMarkup) {
     }
 }
 
-fn replace_string_links<'a>(text: &'a mut String, keyboard: &mut InlineKeyboardMarkup) {
+fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) {
     lazy_static! {
         static ref LINK_REGEX: Regex =
             Regex::new(r"\{@(?P<cmd>\w+)(?:\s+(?P<arg1>.+?))?(?:\|(?P<arg2>.*?))?(?:\|(?P<arg3>.*?))?(?:\|(?P<arg4>.*?))?\}(?P<bonus>\d+)?")

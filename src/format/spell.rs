@@ -73,7 +73,7 @@ impl Spell for Document {
             })
             .collect::<Vec<_>>()
             .join(", ")
-            .to_option()
+            .into_option()
     }
 
     fn get_range(&self) -> Option<String> {
@@ -107,7 +107,7 @@ impl Spell for Document {
             .filter_map(|doc| get_duration(doc))
             .collect::<Vec<_>>()
             .join(", ")
-            .to_option()
+            .into_option()
     }
 
     fn format_spell(&self) -> Option<String> {
@@ -117,7 +117,7 @@ impl Spell for Document {
             s.push_str(&format!("\n_{}_", &meta));
         }
 
-        s.push_str("\n");
+        s.push('\n');
 
         if let Some(casting_time) = self.get_casting_time() {
             s.push_str(&format!("\n*Casting time*: {}", &casting_time));
