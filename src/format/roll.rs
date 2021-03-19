@@ -170,15 +170,6 @@ peg::parser! {
 
     pub rule expression() -> Expression
       = precedence!{
-        "+" z:@ {
-            println!("z={:?}", z);
-            if let Expression::Value(Operand::Dice(d)) = z {
-                Expression::Value(Operand::dice(DiceNum::Advantage, 20))
-            } else {
-                Expression::Plus(Box::new(Expression::default()), Box::new(z))
-            }
-        }
-        --
         x:(@) "+" y:@ {
             println!("x={:?}", x);
             println!("y={:?}", y);
@@ -191,13 +182,20 @@ peg::parser! {
         --
         x:@ "^" y:(@) { Expression::Power(Box::new(x), Box::new(y)) }
         --
-        _ n:operand() _ { 
+        _ n:operand() _ {
             println!("n={:?}", n);
             Expression::Value(n)
         }
         "(" _ e:expression() _ ")" { e }
 
       }
+
+    rule short_bonus_plus() -> Expression
+      = _ "+" _ num:num() _ {
+          Expression::Plus(
+              Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+              Box::new(Expression::Value(Operand::num(num))))
+        }
   }
 }
 
@@ -228,20 +226,38 @@ mod test {
                 Box::new(Expression::Value(Operand::Num(5)))
             ))
         );
-        // assert_eq!(
-        //     roll_parser::expression("+d20+5"),
-        //     Ok(Expression::Plus(
-        //         Box::new(Expression::Value(Operand::Dice(Dice {
-        //             num: DiceNum::Advantage,
-        //             face: 20
-        //         }))),
-        //         Box::new(Expression::Value(Operand::Num(5)))
-        //     ))
-        // );
-        // assert_eq!(
-        //     roll_parser::expression("+d20"),
-        //     Ok(Expression::Value(Operand::dice(DiceNum::Advantage, 20)))
-        // );
+        assert_eq!(
+            roll_parser::expression("+d20"),
+            Ok(Expression::Value(Operand::dice(DiceNum::Advantage, 20)))
+        );
+        assert_eq!(
+            roll_parser::expression("d20"),
+            Ok(Expression::Value(Operand::dice(DiceNum::Num(1), 20)))
+        );
+        assert_eq!(
+            roll_parser::expression("d4"),
+            Ok(Expression::Value(Operand::dice(DiceNum::Num(1), 4)))
+        );
+        assert_eq!(
+            roll_parser::expression("d6+d4+3"),
+            Ok(Expression::Plus(
+                Box::new(Expression::Plus(
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 6))),
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 4)))
+                )),
+                Box::new(Expression::Value(Operand::Num(3)))
+            ))
+        );
+        assert_eq!(
+            roll_parser::expression("+d20+5"),
+            Ok(Expression::Plus(
+                Box::new(Expression::Value(Operand::Dice(Dice {
+                    num: DiceNum::Advantage,
+                    face: 20
+                }))),
+                Box::new(Expression::Value(Operand::Num(5)))
+            ))
+        );
         // assert_eq!(
         //     roll_parser::expression("+"),
         //     Ok(Expression::Value(Operand::dice(DiceNum::Advantage, 20)))

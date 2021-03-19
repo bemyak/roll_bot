@@ -187,6 +187,7 @@ impl Bot {
                 .captures_iter(data)
                 .map(|cap| {
                     let cmd = cap.name("cmd").unwrap().as_str();
+                    let cmd = cmd.split('@').next().unwrap();
                     let arg = cap.name("arg").map_or("", |m| m.as_str());
                     (cmd, arg)
                 })
