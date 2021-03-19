@@ -46,7 +46,7 @@ pub const COLLECTIONS: &[Collection] = &[
         type_: CollectionType::Spell,
     },
     Collection {
-        commands: &["monster", "m"],
+        commands: &["monster", "m", "mm"],
         urls: &["bestiary", "bestiary/legendarygroups.json"],
         collections: &["monster"],
         type_: CollectionType::Monster,
