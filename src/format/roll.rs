@@ -157,7 +157,7 @@ peg::parser! {
       = num:$(num() / "+" / "-") { num.parse().unwrap() }
 
     rule dice() -> Dice
-      = num:dice_num()? ("d" / "к" / "д") face:num() { Dice {num: num.unwrap_or(DiceNum::Num(1)), face} }
+      = num:dice_num()? ['d' | 'к' | 'д'] face:num() { Dice {num: num.unwrap_or(DiceNum::Num(1)), face} }
 
     rule dice_operand() -> Operand
       = dice:dice() { Operand::Dice(dice) }
@@ -168,13 +168,9 @@ peg::parser! {
     pub rule operand() -> Operand
       = dice_operand() / num_operand()
 
-    pub rule expression() -> Expression
+    rule full_expression() -> Expression
       = precedence!{
-        x:(@) "+" y:@ {
-            println!("x={:?}", x);
-            println!("y={:?}", y);
-            Expression::Plus(Box::new(x), Box::new(y))
-        }
+        x:(@) "+" y:@ { Expression::Plus(Box::new(x), Box::new(y)) }
         x:(@) "-" y:@ { Expression::Minus(Box::new(x), Box::new(y)) }
         --
         x:(@) "*" y:@ { Expression::Multiply(Box::new(x), Box::new(y)) }
@@ -182,20 +178,52 @@ peg::parser! {
         --
         x:@ "^" y:(@) { Expression::Power(Box::new(x), Box::new(y)) }
         --
-        _ n:operand() _ {
-            println!("n={:?}", n);
-            Expression::Value(n)
-        }
+        _ n:operand() _ { Expression::Value(n) }
         "(" _ e:expression() _ ")" { e }
 
       }
 
-    rule short_bonus_plus() -> Expression
-      = _ "+" _ num:num() _ {
-          Expression::Plus(
-              Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-              Box::new(Expression::Value(Operand::num(num))))
+    rule short_adv() -> Expression
+      = _ sign:$['+' | '-' ] _ {
+          match sign {
+            "+" => Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+            "-" => Expression::Value(Operand::dice(DiceNum::Disadvantage, 20)),
+            _ => unreachable!()
+          }
         }
+
+    rule short_bonus() -> Expression
+      = _ sign:$['+' | '-' | '*' | '/' | '^'] _ num:num() _ {
+          match sign {
+            "+" => Expression::Plus(
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                    Box::new(Expression::Value(Operand::num(num)))
+                ),
+            "-" => Expression::Minus(
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                    Box::new(Expression::Value(Operand::num(num)))
+                ),
+            "*" => Expression::Multiply(
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                    Box::new(Expression::Value(Operand::num(num)))
+                ),
+            "/" => Expression::Divide(
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                    Box::new(Expression::Value(Operand::num(num)))
+                ),
+            "^" => Expression::Power(
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                    Box::new(Expression::Value(Operand::num(num)))
+                ),
+            _ => unreachable!()
+          }
+        }
+
+    pub rule expression() -> Expression
+     = full_expression() / short_bonus() / short_adv()
+
+    pub rule expressions() -> Vec<Expression>
+     = expression()+
   }
 }
 
@@ -258,20 +286,48 @@ mod test {
                 Box::new(Expression::Value(Operand::Num(5)))
             ))
         );
-        // assert_eq!(
-        //     roll_parser::expression("+"),
-        //     Ok(Expression::Value(Operand::dice(DiceNum::Advantage, 20)))
-        // );
-        // assert_eq!(
-        //     roll_parser::expression("+5"),
-        //     Ok(Expression::Plus(
-        //         Box::new(Expression::Value(Operand::Dice(Dice {
-        //             num: DiceNum::Num(1),
-        //             face: 20
-        //         }))),
-        //         Box::new(Expression::Value(Operand::Num(5)))
-        //     ))
-        // );
+        assert_eq!(
+            roll_parser::expression("+"),
+            Ok(Expression::Value(Operand::dice(DiceNum::Advantage, 20)))
+        );
+        assert_eq!(
+            roll_parser::expression("+5"),
+            Ok(Expression::Plus(
+                Box::new(Expression::Value(Operand::Dice(Dice {
+                    num: DiceNum::Num(1),
+                    face: 20
+                }))),
+                Box::new(Expression::Value(Operand::Num(5)))
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_expressions() {
+        assert_eq!(
+            roll_parser::expressions("1d20 + 5"),
+            Ok(vec![Expression::Plus(
+                Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                Box::new(Expression::Value(Operand::Num(5)))
+            )])
+        );
+
+        assert_eq!(
+            roll_parser::expressions("1d20 1d6"),
+            Ok(vec![
+                Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
+                Expression::Value(Operand::dice(DiceNum::Num(1), 6)),
+            ])
+        );
+
+        assert_eq!(
+            roll_parser::expressions("+ + +"),
+            Ok(vec![
+                Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+                Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+                Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+            ])
+        );
     }
 }
 
