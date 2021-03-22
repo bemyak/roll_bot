@@ -87,11 +87,24 @@ pub enum Operand {
 
 impl Operand {
     pub fn dice(num: DiceNum, face: u16) -> Operand {
-        Operand::Dice(Dice { num, face })
+        Operand::Dice(Dice::new(num, face))
     }
 
     pub fn num(num: u16) -> Operand {
         Operand::Num(num)
+    }
+}
+
+impl Display for Operand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operand::Dice(d) => {
+                write!(f, "{}", d)
+            }
+            Operand::Num(n) => {
+                write!(f, "{}", n)
+            }
+        }
     }
 }
 
@@ -114,20 +127,87 @@ impl FromStr for DiceNum {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Dice {
     pub num: DiceNum,
     pub face: u16,
+    results: Vec<u16>,
+    total: u64,
 }
 
-impl Default for Dice {
-    fn default() -> Self {
+impl Dice {
+    fn new(num: DiceNum, face: u16) -> Self {
+        let rolls_num = match num {
+            DiceNum::Num(n) => n,
+            _ => 2,
+        };
+        let results: Vec<_> = (0..rolls_num)
+            .map(|_| rand::thread_rng().gen_range(0..if face == 0 { 20 } else { face }) + 1)
+            .collect();
+        let results_clone = results.clone();
+        let total = match num {
+            DiceNum::Advantage => results_clone.into_iter().max().unwrap_or(0) as u64,
+            DiceNum::Disadvantage => results_clone.into_iter().min().unwrap_or(0) as u64,
+            DiceNum::Num(_) => {
+                let mut sum = 0;
+                results_clone.into_iter().for_each(|r| sum += r as u64);
+                sum
+            }
+        };
         Self {
-            num: DiceNum::Num(1),
-            face: 20,
+            num,
+            face,
+            results,
+            total,
         }
     }
 }
+
+impl Display for Dice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let face_str = if self.face == 0 {
+            "⛧".to_owned()
+        } else {
+            self.face.to_string()
+        };
+        let face_int = if self.face == 0 { 20 } else { self.face };
+        match self.num {
+            DiceNum::Advantage => {
+                write!(f, "d{} with advantage", face_str)?;
+            }
+            DiceNum::Disadvantage => {
+                write!(f, "d{} with disadvantage", face_str)?;
+            }
+            DiceNum::Num(n) => {
+                write!(f, "{}d{}", n, face_str)?;
+            }
+        };
+        let mut roll_results = self
+            .results
+            .iter()
+            .map(|roll| {
+                if *roll == 1 || *roll == face_int {
+                    format!("*{}*", roll)
+                } else {
+                    format!("{}", roll)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        if self.face == 0 {
+            zalgofy(&mut roll_results);
+        }
+        write!(f, "`[{}]`", roll_results)
+    }
+}
+
+impl PartialEq for Dice {
+    fn eq(&self, other: &Self) -> bool {
+        self.num == other.num && self.face == other.face
+    }
+}
+
+impl Eq for Dice {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expression {
@@ -139,9 +219,78 @@ pub enum Expression {
     Power(Box<Expression>, Box<Expression>),
 }
 
-impl Default for Expression {
-    fn default() -> Self {
-        Self::Value(Operand::Dice(Dice::default()))
+impl Display for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expression::Value(v) => {
+                write!(f, "{}", v)
+            }
+            Expression::Plus(a, b) => {
+                write!(f, "{} + {}", a, b)
+            }
+            Expression::Minus(a, b) => {
+                write!(f, "{} - {}", a, b)
+            }
+            Expression::Multiply(a, b) => {
+                match **a {
+                    Expression::Plus(_, _) | Expression::Minus(_, _) => {
+                        write!(f, "({})", a)?;
+                    }
+                    _ => {
+                        write!(f, "{}", a)?;
+                    }
+                }
+                write!(f, " * ")?;
+                match **b {
+                    Expression::Plus(_, _) | Expression::Minus(_, _) => {
+                        write!(f, "({})", b)?;
+                    }
+                    _ => {
+                        write!(f, "{}", b)?;
+                    }
+                }
+                Ok(())
+            }
+            Expression::Divide(a, b) => {
+                match **a {
+                    Expression::Plus(_, _) | Expression::Minus(_, _) => {
+                        write!(f, "({})", a)?;
+                    }
+                    _ => {
+                        write!(f, "{}", a)?;
+                    }
+                }
+                write!(f, " / ")?;
+                match **b {
+                    Expression::Plus(_, _) | Expression::Minus(_, _) => {
+                        write!(f, "({})", b)?;
+                    }
+                    _ => {
+                        write!(f, "{}", b)?;
+                    }
+                }
+                Ok(())
+            }
+            Expression::Power(a, b) => {
+                write!(f, "{}^{}", a, b)
+            }
+        }
+    }
+}
+
+impl Expression {
+    fn calc(&self) -> u64 {
+        match self {
+            Expression::Value(operand) => match operand {
+                Operand::Dice(d) => d.total,
+                Operand::Num(n) => *n as u64,
+            },
+            Expression::Plus(a, b) => a.calc() + b.calc(),
+            Expression::Minus(a, b) => a.calc() - b.calc(),
+            Expression::Multiply(a, b) => a.calc() * b.calc(),
+            Expression::Divide(a, b) => a.calc() / b.calc(),
+            Expression::Power(a, b) => a.calc().pow(b.calc() as u32),
+        }
     }
 }
 
@@ -151,13 +300,13 @@ peg::parser! {
     rule _() = [' ' | '\n' | '\t']*
 
     rule num() -> u16
-      = num:$(['0'..='9']+) { num.parse().unwrap() }
+      = num:$(['0'..='9']+) {? num.parse().or(Err("The number is too big")) }
 
     rule dice_num() -> DiceNum
-      = num:$(num() / "+" / "-") { num.parse().unwrap() }
+      = num:$(num() / "+" / "-") {? num.parse().or(Err("I don't have that many dices!")) }
 
     rule dice() -> Dice
-      = num:dice_num()? ['d' | 'к' | 'д'] face:num() { Dice {num: num.unwrap_or(DiceNum::Num(1)), face} }
+      = num:dice_num()? ['d' | 'к' | 'д'] face:num() { Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
 
     rule dice_operand() -> Operand
       = dice:dice() { Operand::Dice(dice) }
@@ -179,7 +328,7 @@ peg::parser! {
         x:@ "^" y:(@) { Expression::Power(Box::new(x), Box::new(y)) }
         --
         _ n:operand() _ { Expression::Value(n) }
-        "(" _ e:expression() _ ")" { e }
+        "(" _ e:full_expression() _ ")" { e }
 
       }
 
@@ -279,10 +428,7 @@ mod test {
         assert_eq!(
             roll_parser::expression("+d20+5"),
             Ok(Expression::Plus(
-                Box::new(Expression::Value(Operand::Dice(Dice {
-                    num: DiceNum::Advantage,
-                    face: 20
-                }))),
+                Box::new(Expression::Value(Operand::dice(DiceNum::Advantage, 20))),
                 Box::new(Expression::Value(Operand::Num(5)))
             ))
         );
@@ -293,10 +439,7 @@ mod test {
         assert_eq!(
             roll_parser::expression("+5"),
             Ok(Expression::Plus(
-                Box::new(Expression::Value(Operand::Dice(Dice {
-                    num: DiceNum::Num(1),
-                    face: 20
-                }))),
+                Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
                 Box::new(Expression::Value(Operand::Num(5)))
             ))
         );
@@ -328,6 +471,19 @@ mod test {
                 Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
             ])
         );
+    }
+
+    #[test]
+    fn test_display_expression() {
+        let expr = roll_parser::expression("+d0 + 5").unwrap();
+        print!("{}", expr);
+        println!(" = {}", expr.calc());
+    }
+
+    #[test]
+    fn test_errors() {
+        let expr = roll_parser::expression("9999999d200").unwrap();
+        // assert!(expr.is_err());
     }
 }
 
