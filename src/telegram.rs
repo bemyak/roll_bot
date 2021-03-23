@@ -315,10 +315,7 @@ impl Bot {
     async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
         let response = match roll_dice(arg) {
             Ok(response) => response,
-            Err(err) => match err {
-                DieFormatError::Other(_) => return Err(BotError::DieFormatError(err)),
-                _ => err.to_string(),
-            },
+            Err(err) => err.to_string(),
         };
         self.split_and_send(message, &response, None).await?;
         Ok(Some(response))
@@ -562,7 +559,7 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
             "dice" | "damage" => {
                 let roll_results = roll_results(arg1).unwrap();
                 let roll = roll_results.get(0).unwrap();
-                format!("*{}* `[{}]` ", arg1, roll.total)
+                format!("*{}* `[{}]` ", arg1, roll.calc())
             }
             "recharge" => {
                 if arg1.is_empty() {
