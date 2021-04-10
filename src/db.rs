@@ -114,7 +114,7 @@ impl DndDatabase {
 
     pub fn get_metadata(&self) -> Result<ejdb::meta::DatabaseMetadata, ejdb::Error> {
         let inner = self.inner.read().unwrap();
-        Ok(inner.db.get_metadata()?)
+        inner.db.get_metadata()
     }
 
     // This is terribly inefficient, but upstream EJDB bindings does not implement distinct queries :(

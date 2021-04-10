@@ -559,7 +559,7 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
             "dice" | "damage" => {
                 let roll_results = roll_results(arg1).unwrap();
                 let roll = roll_results.get(0).unwrap();
-                format!("*{}* `[{}]` ", arg1, roll.calc())
+                format!("*{}* `[{}]` ", arg1, roll.expression.calc())
             }
             "recharge" => {
                 if arg1.is_empty() {

@@ -17,7 +17,19 @@ pub enum DieFormatError {
 pub fn roll_dice(msg: &str) -> Result<String, DieFormatError> {
     let response = roll_results(msg)?
         .iter()
-        .map(|roll| format!("{} = {}", roll.to_string(), roll.calc()))
+        .map(|roll| match &roll.comment {
+            Some(comment) => format!(
+                "{}: {} = {}",
+                comment,
+                roll.expression.to_string(),
+                roll.expression.calc()
+            ),
+            None => format!(
+                "{} = {}",
+                roll.expression.to_string(),
+                roll.expression.calc()
+            ),
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -29,21 +41,11 @@ pub fn roll_dice(msg: &str) -> Result<String, DieFormatError> {
     }
 }
 
-pub fn roll_results(msg: &str) -> Result<Vec<Expression>, DieFormatError> {
+pub fn roll_results(msg: &str) -> Result<Vec<RollLine>, DieFormatError> {
     if msg.len() > u16::MAX as usize {
         return Err(DieFormatError::TooLongText);
     }
-    if msg.is_empty() {
-        return Ok(vec![Expression::Value(Operand::dice(DiceNum::Num(1), 20))]);
-    }
-    roll_parser::expressions(msg).map_err(|_err| {
-        // let errors: Vec<_> = err
-        //     .expected
-        //     .tokens()
-        //     .filter(|s| !s.contains("expected on of"))
-        //     .collect();
-        DieFormatError::ParseError
-    })
+    roll_parser::expressions(msg).map_err(|_err| DieFormatError::ParseError)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -245,6 +247,12 @@ impl Display for Expression {
     }
 }
 
+impl Default for Expression {
+    fn default() -> Self {
+        Self::Value(Operand::dice(DiceNum::Num(1), 20))
+    }
+}
+
 impl Expression {
     pub fn calc(&self) -> u64 {
         match self {
@@ -257,6 +265,30 @@ impl Expression {
             Expression::Multiply(a, b) => a.calc() * b.calc(),
             Expression::Divide(a, b) => a.calc() / b.calc(),
             Expression::Power(a, b) => a.calc().pow(b.calc() as u32),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RollLine {
+    pub expression: Expression,
+    pub comment: Option<String>,
+}
+
+impl RollLine {
+    fn new(expression: Expression, comment: Option<String>) -> Self {
+        Self {
+            expression,
+            comment,
+        }
+    }
+}
+
+impl Default for RollLine {
+    fn default() -> Self {
+        Self {
+            expression: Expression::default(),
+            comment: None,
         }
     }
 }
@@ -336,10 +368,43 @@ peg::parser! {
         }
 
     pub rule expression() -> Expression
-     = full_expression() / short_bonus() / short_adv()
+        = full_expression() / short_bonus() / short_adv()
 
-    pub rule expressions() -> Vec<Expression>
-     = e:expression()+ [_]* { e }
+    rule comment() -> Option<String>
+        = c:$((!expression() [_])+)  {
+            if c.is_empty() {
+                None
+            } else {
+                let c = c.trim_matches(|c: char| !c.is_alphanumeric() );
+                Some(c.to_owned())
+            }
+        }
+
+    rule expression_with_comment() -> RollLine
+        = e:expression() c:comment()? {
+            RollLine::new(e, c.flatten())
+        }
+
+    rule only_comment() -> RollLine
+        = c:comment() {
+            let expression = Expression::default();
+            RollLine{
+                expression,
+                comment: c,
+            }
+        }
+
+    rule roll_line() -> RollLine
+        = expression_with_comment() / only_comment()
+
+    rule nothing() -> Vec<RollLine>
+        = ![_] {
+            vec![RollLine::default()]
+        }
+
+
+    pub rule expressions() -> Vec<RollLine>
+        = roll_line()+ / nothing()
     }
 }
 
@@ -416,26 +481,44 @@ mod test {
     fn test_parse_expressions() {
         assert_eq!(
             roll_parser::expressions("1d20 + 5"),
-            Ok(vec![Expression::Plus(
-                Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-                Box::new(Expression::Value(Operand::Num(5)))
-            )])
+            Ok(vec![RollLine {
+                expression: Expression::Plus(
+                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                    Box::new(Expression::Value(Operand::Num(5)))
+                ),
+                comment: None,
+            }])
         );
 
         assert_eq!(
             roll_parser::expressions("1d20 1d6"),
             Ok(vec![
-                Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
-                Expression::Value(Operand::dice(DiceNum::Num(1), 6)),
+                RollLine {
+                    expression: Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
+                    comment: None,
+                },
+                RollLine {
+                    expression: Expression::Value(Operand::dice(DiceNum::Num(1), 6)),
+                    comment: None,
+                }
             ])
         );
 
         assert_eq!(
             roll_parser::expressions("+ + +"),
             Ok(vec![
-                Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
-                Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
-                Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+                RollLine {
+                    expression: Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+                    comment: None,
+                },
+                RollLine {
+                    expression: Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+                    comment: None,
+                },
+                RollLine {
+                    expression: Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+                    comment: None,
+                },
             ])
         );
     }
@@ -451,5 +534,48 @@ mod test {
     fn test_errors() {
         let expr = roll_parser::expression("9999999d200");
         assert!(expr.is_err());
+    }
+
+    #[test]
+    fn test_comment() {
+        let expr = roll_parser::expressions("d20 + 5 to sneak the target");
+        assert!(expr.is_ok());
+        let expr = expr.unwrap();
+        let expr = expr.get(0).unwrap();
+        assert_eq!(expr.comment, Some("to sneak the target".to_owned()));
+    }
+
+    #[test]
+    fn test_mixed_comment() {
+        let expr = roll_parser::expressions("d20 to sneak the target 2d6 damage");
+        assert!(expr.is_ok());
+        let expr = expr.unwrap();
+        assert_eq!(
+            expr,
+            vec![
+                RollLine {
+                    expression: Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
+                    comment: Some("to sneak the target".to_owned()),
+                },
+                RollLine {
+                    expression: Expression::Value(Operand::dice(DiceNum::Num(2), 6)),
+                    comment: Some("damage".to_owned()),
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_empty_comment() {
+        let expr = roll_parser::expressions("to sneak the target");
+        assert!(expr.is_ok());
+        let expr = expr.unwrap();
+        assert_eq!(
+            expr,
+            vec![RollLine {
+                expression: Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
+                comment: Some("to sneak the target".to_owned()),
+            }]
+        );
     }
 }
