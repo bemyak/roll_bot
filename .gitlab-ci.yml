@@ -9,7 +9,7 @@ variables:
 
 test:
   # We need to use an image with GLIBC <= 2.17 to be compatible with CentOS 7
-  image: rust:stretch
+  image: rust:bullseye
   stage: compile
   script:
     - apt update && apt install -y cmake clang
@@ -22,7 +22,7 @@ test:
     - master
 
 build:
-  image: rust:stretch
+  image: rust:bullseye
   stage: compile
   script:
     # Cmake and Clang are needed to build ejdb
