@@ -4,7 +4,7 @@ use super::{
 };
 use crate::DB;
 use ejdb::bson::{Bson, Document};
-use std::convert::identity;
+
 
 pub trait Item: Entry {
     // we need database to expand abbreviations
@@ -169,7 +169,7 @@ impl Item for Document {
 
         tags.push(expand_type_abbreviation(self, type_, abbr));
 
-        Some(tags.into_iter().filter_map(identity).collect())
+        Some(tags.into_iter().flatten().collect())
     }
     fn get_rarity(&self) -> Option<String> {
         self.get_str("rarity").ok().map(|rarity| match rarity {
