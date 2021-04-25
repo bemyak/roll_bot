@@ -7,7 +7,7 @@ pub mod spell;
 pub mod telegram;
 pub mod utils;
 
-use std::{fmt::Write};
+use std::fmt::Write;
 
 use comfy_table::{presets::ASCII_NO_BORDERS, Cell, ContentArrangement, Row, Table};
 use ejdb::bson::Document;

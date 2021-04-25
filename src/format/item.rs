@@ -5,7 +5,6 @@ use super::{
 use crate::DB;
 use ejdb::bson::{Bson, Document};
 
-
 pub trait Item: Entry {
     // we need database to expand abbreviations
     fn format_item(&self) -> Option<String>;

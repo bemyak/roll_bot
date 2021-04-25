@@ -209,7 +209,7 @@ impl Display for Expression {
                         write!(f, "{}", a)?;
                     }
                 }
-                write!(f, " * ")?;
+                write!(f, " \\* ")?;
                 match **b {
                     Expression::Plus(_, _) | Expression::Minus(_, _) => {
                         write!(f, "({})", b)?;
@@ -277,9 +277,28 @@ pub struct RollLine {
 
 impl RollLine {
     fn new(expression: Expression, comment: Option<String>) -> Self {
-        Self {
-            expression,
-            comment,
+        match comment {
+            None => Self {
+                expression,
+                comment,
+            },
+            Some(comment) => {
+                const CHARS_TO_ESCAPE: [char; 5] = ['\\', '`', '*', '_', '['];
+
+                let mut escaped_comment = String::new();
+
+                for c in comment.chars() {
+                    if CHARS_TO_ESCAPE.contains(&c) {
+                        escaped_comment.push('\\');
+                    }
+                    escaped_comment.push(c)
+                }
+
+                Self {
+                    expression,
+                    comment: Some(escaped_comment),
+                }
+            }
         }
     }
 }
@@ -375,7 +394,8 @@ peg::parser! {
             if c.is_empty() {
                 None
             } else {
-                let c = c.trim_matches(|c: char| !c.is_alphanumeric() );
+                const TRIM: [char; 4] = ['\\', ',', ';', '.'];
+                let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c)  );
                 Some(c.to_owned())
             }
         }
@@ -388,10 +408,7 @@ peg::parser! {
     rule only_comment() -> RollLine
         = c:comment() {
             let expression = Expression::default();
-            RollLine{
-                expression,
-                comment: c,
-            }
+            RollLine::new(expression, c)
         }
 
     rule roll_line() -> RollLine

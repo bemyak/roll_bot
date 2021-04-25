@@ -625,6 +625,10 @@ fn get_end(bytes: &[u8], start: usize, hard_end: usize) -> usize {
 fn fix_tags(split: &[&str]) -> Vec<String> {
     const MARKUP_TAGS: [&str; 4] = ["```", "`", "*", "_"];
 
+    if split.len() == 1 {
+        return split.iter().map(|s| s.to_string()).collect();
+    }
+
     let mut tag_to_fix: Option<&str> = None;
     split
         .iter()

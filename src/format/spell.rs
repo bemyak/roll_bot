@@ -2,7 +2,6 @@ use super::{Capitalizable, Entry, FilterJoinable, Optionable};
 use ejdb::bson::Document;
 use ordinal::Ordinal;
 
-
 pub trait Spell: Entry {
     fn get_meta(&self) -> Option<String>;
     fn get_casting_time(&self) -> Option<String>;
