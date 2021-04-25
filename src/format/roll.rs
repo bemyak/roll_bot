@@ -45,7 +45,24 @@ pub fn roll_results(msg: &str) -> Result<Vec<RollLine>, DieFormatError> {
     if msg.len() > u16::MAX as usize {
         return Err(DieFormatError::TooLongText);
     }
-    roll_parser::expressions(msg).map_err(|_err| DieFormatError::ParseError)
+    roll_parser::expressions(msg)
+        .map_err(|_err| DieFormatError::ParseError)
+        .map(|rolls| {
+            if let [RollLine {
+                expression: Expression::Value(Operand::Num(num)),
+                comment,
+            }] = &*rolls
+            {
+                let substitution =
+                    Expression::Value(Operand::Dice(Dice::new(DiceNum::Num(*num), 20)));
+                vec![RollLine {
+                    expression: substitution,
+                    comment: comment.clone(),
+                }]
+            } else {
+                rolls
+            }
+        })
 }
 
 #[derive(Debug, PartialEq, Eq)]
