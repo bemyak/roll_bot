@@ -298,6 +298,8 @@ impl TryFrom<bson::ordered::OrderedDocument> for LogMessage {
 
 #[cfg(test)]
 mod test {
+    use std::{fs::create_dir_all, path::Path};
+
     use super::DndDatabase;
     use crate::format::Entry;
 
@@ -305,6 +307,8 @@ mod test {
 
     fn init() {
         let _ = TestLogger::init(LevelFilter::Trace, Config::default());
+        let path = Path::new(get_db_path());
+        create_dir_all(path.parent().unwrap()).unwrap();
     }
 
     #[test]
