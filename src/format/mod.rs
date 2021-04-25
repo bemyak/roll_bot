@@ -7,7 +7,7 @@ pub mod spell;
 pub mod telegram;
 pub mod utils;
 
-use std::{convert::identity, fmt::Write};
+use std::fmt::Write;
 
 use comfy_table::{presets::ASCII_NO_BORDERS, Cell, ContentArrangement, Row, Table};
 use ejdb::bson::Document;
@@ -115,10 +115,7 @@ impl EntryUtils for Document {
         doc.into_iter()
             .filter_map(|(k, v)| {
                 let v = v.as_str();
-                match v {
-                    Some(v) => Some((k.to_string(), v.to_string())),
-                    None => None,
-                }
+                v.map(|v| (k.to_string(), v.to_string()))
             })
             .collect::<Vec<_>>()
             .into_option()
@@ -288,7 +285,7 @@ pub fn cost_to_string(cost: i64) -> String {
 
     vec![gold, silver, cooper]
         .into_iter()
-        .filter_map(identity)
+        .flatten()
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -335,7 +332,7 @@ where
 {
     fn filter_join(self, sep: &str) -> Option<String> {
         self.into_iter()
-            .filter_map(identity)
+            .flatten()
             .map(|t| t.to_string())
             .collect::<Vec<_>>()
             .join(sep)

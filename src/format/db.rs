@@ -67,7 +67,7 @@ pub fn format_message_stats(msgs: Vec<LogMessage>) -> Result<String, ejdb::Error
         users
     };
 
-    let users_total = users.iter().count();
+    let users_total = users.len();
     let users_total_month = users.iter().filter(|(_, ts)| ts >= &&mount_ago).count();
 
     Ok(format!(

@@ -1,7 +1,6 @@
 use super::{Capitalizable, Entry, FilterJoinable, Optionable};
 use ejdb::bson::Document;
 use ordinal::Ordinal;
-use std::convert::identity;
 
 pub trait Spell: Entry {
     fn get_meta(&self) -> Option<String>;
@@ -63,7 +62,7 @@ impl Spell for Document {
         times
             .iter()
             .map(|time| time.as_document())
-            .filter_map(identity)
+            .flatten()
             .filter_map(|time| {
                 let number = time.get_i64("number").map(|number| number.to_string()).ok();
                 let unit = time.get_str("unit").map(str::to_owned).ok();
