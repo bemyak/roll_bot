@@ -301,34 +301,47 @@ mod test {
     use std::{fs::create_dir_all, path::Path};
 
     use super::DndDatabase;
+    use crate::fetch::fetch;
     use crate::format::Entry;
 
+    use tokio_test::block_on;
     use simplelog::*;
 
-    fn init() {
+    fn init_db() -> DndDatabase {
         let _ = TestLogger::init(LevelFilter::Trace, Config::default());
-        let path = Path::new(get_db_path());
+        const DB_PATH: &str = "./test_data/roll_bot.ejdb";
+        let path = Path::new(DB_PATH);
         create_dir_all(path.parent().unwrap()).unwrap();
+        DndDatabase::new(DB_PATH).unwrap()
+    }
+
+    fn init_with_data() -> DndDatabase {
+        let db = init_db();
+        log::set_max_level(LevelFilter::Warn);
+        let data = block_on(fetch()).unwrap();
+        log::set_max_level(LevelFilter::Trace);
+        for (collection, items) in data {
+            db.save_collection(items, &collection).unwrap();
+        }
+        db.update_cache();
+        db
     }
 
     #[test]
     fn test_get_cache() {
-        init();
-        let db = DndDatabase::new(get_db_path()).unwrap();
+        let db = init_with_data();
         assert!(db.cache.read().unwrap().len() > 0);
     }
 
     #[test]
     fn test_get_stats() {
-        init();
-        let db = DndDatabase::new(get_db_path()).unwrap();
+        let db = init_with_data();
         info!("{:?}", db.get_metadata().unwrap());
     }
 
     #[test]
     fn test_get_item() {
-        init();
-        let db = DndDatabase::new(get_db_path()).unwrap();
+        let db = init_with_data();
         let i = db.get_item("spell", "Fireball").unwrap().unwrap();
         info!("{:#?}", i);
         info!("{}", i.format());
@@ -336,16 +349,11 @@ mod test {
 
     #[test]
     fn test_cache() {
-        init();
-        let db = DndDatabase::new(get_db_path()).unwrap();
+        let db = init_with_data();
         let cache = db.cache.read().unwrap();
         let engine = cache.get("spell").unwrap();
         assert!(!engine.search("fireball").is_empty());
         let engine = cache.get("item").unwrap();
         assert!(!engine.search("bag of").is_empty());
-    }
-
-    fn get_db_path() -> &'static str {
-        "./test_data/roll_bot.ejdb"
     }
 }
