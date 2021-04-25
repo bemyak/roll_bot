@@ -341,7 +341,7 @@ peg::parser! {
       = num:$(num() / "+" / "-") {? num.parse().or(Err("I don't have that many dices!")) }
 
     rule dice() -> Dice
-      = num:dice_num()? ['d' | 'к' | 'д'] face:num() { Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
+      = num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num() { Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
 
     rule dice_operand() -> Operand
       = dice:dice() { Operand::Dice(dice) }

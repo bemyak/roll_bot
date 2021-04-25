@@ -304,8 +304,8 @@ mod test {
     use crate::fetch::fetch;
     use crate::format::Entry;
 
-    use tokio_test::block_on;
     use simplelog::*;
+    use tokio_test::block_on;
 
     fn init_db() -> DndDatabase {
         let _ = TestLogger::init(LevelFilter::Trace, Config::default());

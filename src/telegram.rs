@@ -10,8 +10,8 @@ use telegram_bot::{
     prelude::*,
     reply_markup,
     types::reply_markup::*,
-    Api, CallbackQuery, GetMe, Message, MessageKind, MessageOrChannelPost, ParseMode, Update,
-    UpdateKind, User,
+    Api, CallbackQuery, GetMe, Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode,
+    Update, UpdateKind, User,
 };
 use thiserror::Error;
 use tokio::task;
@@ -138,7 +138,9 @@ impl Bot {
         // We don't want to speak to other bots
         if message.from.is_bot {
             info!("Message from bot received: {:?}", message.kind);
-            self.help(&message, "").await?;
+            if !is_group(message) {
+                self.help(&message, "").await?;
+            }
             return Ok(());
         }
 
@@ -279,34 +281,37 @@ impl Bot {
     }
 
     async fn unknown(&self, message: &Message, cmd: &str) -> Result<Option<String>, BotError> {
-        self.api
-            .send(
-                message
-                    .chat
-                    .text(format!("Err, I don't know `{}` command yet.", cmd))
-                    .parse_mode(ParseMode::Markdown),
-            )
-            .await?;
+        if !is_group(message) {
+            self.api
+                .send(
+                    message
+                        .chat
+                        .text(format!("Err, I don't know `{}` command yet.", cmd))
+                        .parse_mode(ParseMode::Markdown),
+                )
+                .await?;
+        }
         Ok(None)
     }
 
-    async fn help(&self, message: &Message, _arg: &str) -> Result<Option<String>, BotError> {
+    async fn help(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
         lazy_static! {
             static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
                 ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://www.buymeacoffee.com/bemyak", "Chat with author" url "https://t.me/bemyak"]
             );
         }
-        let help = help_message();
+
+        let mut request = match arg {
+            "roll" => message.chat.text(help_roll_message()),
+            _ => {
+                let mut msg = message.chat.text(help_message());
+                msg.reply_markup(HELP_MARKUP.clone());
+                msg
+            }
+        };
 
         self.api
-            .send(
-                message
-                    .chat
-                    .text(help)
-                    .parse_mode(ParseMode::Markdown)
-                    .disable_preview()
-                    .reply_markup(HELP_MARKUP.clone()),
-            )
+            .send(request.parse_mode(ParseMode::Markdown).disable_preview())
             .await?;
 
         Ok(None)
@@ -479,6 +484,10 @@ impl Bot {
         self.api.send(answer).await?;
         Ok(())
     }
+}
+
+fn is_group(msg: &Message) -> bool {
+    matches!(msg.chat, MessageChat::Group(_))
 }
 
 pub fn get_connector() -> Box<dyn Connector> {
