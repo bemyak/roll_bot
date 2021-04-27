@@ -196,6 +196,8 @@ impl Bot {
                 .collect::<Vec<_>>();
 
             for (cmd, arg) in cmds {
+                let cmd = cmd.to_lowercase();
+                let cmd = cmd.as_str();
                 let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
 
                 let cmd_result = self.execute_command(&cmd, &arg, &message).await;
@@ -240,8 +242,6 @@ impl Bot {
         message: &Message,
     ) -> Result<Option<String>, BotError> {
         match cmd {
-            // WARNING: ParseMode::Markdown doesn't work for some reason on large text with plain-text url
-            // The returned string value is used to log request-response pair into the database
             "help" | "h" | "about" | "start" => self.help(message, arg).await,
             "roll" | "r" => self.roll(message, arg).await,
             "stats" => self.stats(message).await,
