@@ -209,7 +209,7 @@ impl Bot {
                 let request = message.text().unwrap_or_default();
 
                 MESSAGE_COUNTER
-                    .with_label_values(&[format!("{}", user_id).as_str(), chat_type, cmd])
+                    .with_label_values(&[chat_type, cmd])
                     .inc();
 
                 DB.log_message(

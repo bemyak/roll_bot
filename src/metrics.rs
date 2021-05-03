@@ -13,7 +13,7 @@ lazy_static! {
     // Metric collectors
     pub static ref MESSAGE_COUNTER: IntCounterVec = {
         let opts = opts!("message_counter", "Displays number of messages");
-        register_int_counter_vec!(opts, &["user_id", "chat_type", "command"]).unwrap()
+        register_int_counter_vec!(opts, &["chat_type", "command"]).unwrap()
     };
     pub static ref ERROR_COUNTER: IntCounterVec = {
         let opts = opts!("error_counter", "Number of errors occurred");
