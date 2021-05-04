@@ -343,8 +343,17 @@ peg::parser! {
     rule dice() -> Dice
       = num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num() { Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
 
+      rule short_adv() -> Dice
+      = _ sign:$['+' | '-' ] _ {
+          match sign {
+            "+" => Dice::new(DiceNum::Advantage, 20),
+            "-" => Dice::new(DiceNum::Disadvantage, 20),
+            _ => unreachable!(),
+          }
+        }
+
     rule dice_operand() -> Operand
-      = dice:dice() { Operand::Dice(dice) }
+      = dice:(dice() / short_adv()) { Operand::Dice(dice) }
 
     rule num_operand() -> Operand
       = num:num() { Operand::Num(num) }
@@ -366,15 +375,6 @@ peg::parser! {
         "(" _ e:full_expression() _ ")" { e }
 
       }
-
-    rule short_adv() -> Expression
-      = _ sign:$['+' | '-' ] _ {
-          match sign {
-            "+" => Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
-            "-" => Expression::Value(Operand::dice(DiceNum::Disadvantage, 20)),
-            _ => unreachable!()
-          }
-        }
 
     rule short_bonus() -> Expression
       = _ sign:$['+' | '-' | '*' | '/' | '^'] _ num:num() _ {
@@ -404,7 +404,7 @@ peg::parser! {
         }
 
     pub rule expression() -> Expression
-        = full_expression() / short_bonus() / short_adv()
+        = full_expression() / short_bonus()
 
     rule comment() -> Option<String>
         = c:$((!expression() [_])+)  {
