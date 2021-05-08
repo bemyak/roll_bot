@@ -208,7 +208,9 @@ impl Bot {
                 let chat_type = chat_type_to_string(&message.chat);
                 let request = message.text().unwrap_or_default();
 
-                MESSAGE_COUNTER.with_label_values(&[chat_type, cmd]).inc();
+                MESSAGE_COUNTER
+                    .with_label_values(&[chat_type, cmd])
+                    .inc();
 
                 DB.log_message(
                     user_id,
