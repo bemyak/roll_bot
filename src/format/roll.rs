@@ -202,7 +202,6 @@ pub enum Expression {
     Minus(Box<Expression>, Box<Expression>),
     Multiply(Box<Expression>, Box<Expression>),
     Divide(Box<Expression>, Box<Expression>),
-    Power(Box<Expression>, Box<Expression>),
 }
 
 impl Display for Expression {
@@ -257,9 +256,6 @@ impl Display for Expression {
                 }
                 Ok(())
             }
-            Expression::Power(a, b) => {
-                write!(f, "{}^{}", a, b)
-            }
         }
     }
 }
@@ -281,7 +277,6 @@ impl Expression {
             Expression::Minus(a, b) => a.calc() - b.calc(),
             Expression::Multiply(a, b) => a.calc() * b.calc(),
             Expression::Divide(a, b) => a.calc() / b.calc(),
-            Expression::Power(a, b) => a.calc().pow(b.calc() as u32),
         }
     }
 }
@@ -330,115 +325,113 @@ impl Default for RollLine {
 }
 
 peg::parser! {
-  grammar roll_parser() for str {
+    grammar roll_parser() for str {
 
-    rule _() = [' ' | '\n' | '\t']*
+        rule _()
+        = [' ' | '\n' | '\t']*
 
-    rule num() -> u16
-      = num:$(['0'..='9']+) {? num.parse().or(Err("The number is too big")) }
+        rule space()
+        = [' ' | '\n' | '\t']+
 
-    rule dice_num() -> DiceNum
-      = num:$(num() / "+" / "-") {? num.parse().or(Err("I don't have that many dices!")) }
+        rule num() -> u16
+        = num:$(['0'..='9']+) {? num.parse().or(Err("The number is too big")) }
 
-    rule dice() -> Dice
-      = num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num() { Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
+        rule dice_num() -> DiceNum
+        = num:$(num() / "+" / "-") {? num.parse().or(Err("I don't have that many dices!")) }
 
-    rule dice_operand() -> Operand
-      = dice:dice() { Operand::Dice(dice) }
+        rule dice() -> Dice
+        = num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num() { Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
 
-    rule num_operand() -> Operand
-      = num:num() { Operand::Num(num) }
+        rule dice_operand() -> Operand
+        = dice:dice() { Operand::Dice(dice) }
 
-    pub rule operand() -> Operand
-      = dice_operand() / num_operand()
+        rule num_operand() -> Operand
+        = num:num() { Operand::Num(num) }
 
-    rule full_expression() -> Expression
-      = precedence!{
-        x:(@) "+" y:@ { Expression::Plus(Box::new(x), Box::new(y)) }
-        x:(@) "-" y:@ { Expression::Minus(Box::new(x), Box::new(y)) }
-        --
-        x:(@) "*" y:@ { Expression::Multiply(Box::new(x), Box::new(y)) }
-        x:(@) "/" y:@ { Expression::Divide(Box::new(x), Box::new(y)) }
-        --
-        x:@ "^" y:(@) { Expression::Power(Box::new(x), Box::new(y)) }
-        --
-        _ n:operand() _ { Expression::Value(n) }
-        "(" _ e:full_expression() _ ")" { e }
+        pub rule operand() -> Operand
+        = dice_operand() / num_operand()
 
-      }
-
-    rule short_adv() -> Expression
-      = _ sign:$['+' | '-' ] _ {
-          match sign {
-            "+" => Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
-            "-" => Expression::Value(Operand::dice(DiceNum::Disadvantage, 20)),
-            _ => unreachable!()
-          }
+        rule full_expression() -> Expression
+        = precedence!{
+            x:(@) "+" y:@ { Expression::Plus(Box::new(x), Box::new(y)) }
+            x:(@) "-" y:@ { Expression::Minus(Box::new(x), Box::new(y)) }
+            --
+            x:(@) "*" y:@ { Expression::Multiply(Box::new(x), Box::new(y)) }
+            x:(@) "/" y:@ { Expression::Divide(Box::new(x), Box::new(y)) }
+            --
+            _ n:operand() _ { Expression::Value(n) }
+            "(" _ e:full_expression() _ ")" { e }
         }
 
-    rule short_bonus() -> Expression
-      = _ sign:$['+' | '-' | '*' | '/' | '^'] _ num:num() _ {
-          match sign {
-            "+" => Expression::Plus(
-                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-                    Box::new(Expression::Value(Operand::num(num)))
-                ),
-            "-" => Expression::Minus(
-                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-                    Box::new(Expression::Value(Operand::num(num)))
-                ),
-            "*" => Expression::Multiply(
-                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-                    Box::new(Expression::Value(Operand::num(num)))
-                ),
-            "/" => Expression::Divide(
-                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-                    Box::new(Expression::Value(Operand::num(num)))
-                ),
-            "^" => Expression::Power(
-                    Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-                    Box::new(Expression::Value(Operand::num(num)))
-                ),
-            _ => unreachable!()
-          }
+        rule short_adv() -> Expression
+        = _ sign:$['+' | '-' ] _ {
+            match sign {
+                "+" => Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+                "-" => Expression::Value(Operand::dice(DiceNum::Disadvantage, 20)),
+                _ => unreachable!()
+            }
         }
 
-    pub rule expression() -> Expression
+        rule short_bonus() -> Expression
+        = _ sign:$['+' | '-' | '*' | '/' ] _ num:num() _ {
+            match sign {
+                "+" => Expression::Plus(
+                        Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                        Box::new(Expression::Value(Operand::num(num)))
+                    ),
+                "-" => Expression::Minus(
+                        Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                        Box::new(Expression::Value(Operand::num(num)))
+                    ),
+                "*" => Expression::Multiply(
+                        Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                        Box::new(Expression::Value(Operand::num(num)))
+                    ),
+                "/" => Expression::Divide(
+                        Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                        Box::new(Expression::Value(Operand::num(num)))
+                    ),
+                _ => unreachable!()
+            }
+        }
+
+        pub rule expression() -> Expression
         = full_expression() / short_bonus() / short_adv()
 
-    rule comment() -> Option<String>
-        = c:$((!expression() [_])+)  {
+        rule comment() -> Option<String>
+        = c:$((!expression() [_])+) {
             if c.is_empty() {
                 None
             } else {
                 const TRIM: [char; 4] = ['\\', ',', ';', '.'];
-                let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c)  );
+                let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c) );
                 Some(c.to_owned())
             }
         }
 
-    rule expression_with_comment() -> RollLine
+        rule expression_with_comment() -> RollLine
         = e:expression() c:comment()? {
             RollLine::new(e, c.flatten())
         }
 
-    rule only_comment() -> RollLine
+        rule only_comment() -> RollLine
         = c:comment() {
             let expression = Expression::default();
             RollLine::new(expression, c)
         }
 
-    rule roll_line() -> RollLine
+        rule roll_line() -> RollLine
         = expression_with_comment() / only_comment()
 
-    rule nothing() -> Vec<RollLine>
+        rule nothing() -> Vec<RollLine>
         = ![_] {
             vec![RollLine::default()]
         }
 
 
-    pub rule expressions() -> Vec<RollLine>
+        pub rule expressions() -> Vec<RollLine>
         = roll_line()+ / nothing()
+
     }
 }
 
@@ -582,6 +575,7 @@ mod test {
     #[test]
     fn test_mixed_comment() {
         let expr = roll_parser::expressions("d20 to sneak the target 2d6 damage");
+        println!("{:?}", expr);
         assert!(expr.is_ok());
         let expr = expr.unwrap();
         assert_eq!(
