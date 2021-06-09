@@ -245,7 +245,7 @@ impl Display for Expression {
                         write!(f, "{}", a)?;
                     }
                 }
-                write!(f, " / ")?;
+                write!(f, " ÷ ")?;
                 match **b {
                     Expression::Plus(_, _) | Expression::Minus(_, _) => {
                         write!(f, "({})", b)?;
@@ -357,7 +357,7 @@ peg::parser! {
             x:(@) "-" y:@ { Expression::Minus(Box::new(x), Box::new(y)) }
             --
             x:(@) "*" y:@ { Expression::Multiply(Box::new(x), Box::new(y)) }
-            x:(@) "/" y:@ { Expression::Divide(Box::new(x), Box::new(y)) }
+            x:(@) "÷" y:@ { Expression::Divide(Box::new(x), Box::new(y)) }
             --
             _ n:operand() _ { Expression::Value(n) }
             "(" _ e:full_expression() _ ")" { e }
@@ -387,7 +387,7 @@ peg::parser! {
                         Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
                         Box::new(Expression::Value(Operand::num(num)))
                     ),
-                "/" => Expression::Divide(
+                "÷" => Expression::Divide(
                         Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
                         Box::new(Expression::Value(Operand::num(num)))
                     ),
