@@ -276,7 +276,7 @@ impl Expression {
             Expression::Plus(a, b) => a.calc() + b.calc(),
             Expression::Minus(a, b) => a.calc() - b.calc(),
             Expression::Multiply(a, b) => a.calc() * b.calc(),
-            Expression::Divide(a, b) => a.calc() / b.calc(),
+            Expression::Divide(a, b) => (a.calc() as f32 / b.calc() as f32).round() as u64,
         }
     }
 }
