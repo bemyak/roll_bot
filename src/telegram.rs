@@ -320,7 +320,8 @@ impl Bot {
             Ok(response) => response,
             Err(err) => {
                 warn!("Failed to parse {}", arg);
-                err.to_string()},
+                err.to_string()
+            }
         };
         self.split_and_send(message, &response, None).await?;
         Ok(Some(response))
@@ -487,7 +488,7 @@ impl Bot {
 }
 
 fn is_group(msg: &Message) -> bool {
-    matches!(msg.chat, MessageChat::Group(_))
+    matches!(msg.chat, MessageChat::Group(_)) || matches!(msg.chat, MessageChat::Supergroup(_))
 }
 
 pub fn get_connector() -> Box<dyn Connector> {
