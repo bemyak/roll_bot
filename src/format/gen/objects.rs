@@ -1,0 +1,60 @@
+use super::*;
+use serde::{Deserialize, Serialize};
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(rename = "object")]
+pub struct Object {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ac: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "actionEntries")]
+    pub action_entries: Option<Vec<EntryJson>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cha: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub con: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "conditionImmune")]
+    pub condition_immune: Option<ConditionImmunityArray>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "creatureType")]
+    pub creature_type: Option<CreatureType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dex: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entries: Option<Vec<EntryJson>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "hasToken")]
+    pub has_token: Option<bool>,
+    pub hp: serde_json::Value,
+    pub immune: DamageImmunityArray,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub int: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "isNpc")]
+    pub is_npc: Option<bool>,
+    pub name: String,
+    #[doc = " siege weapon; generic; unknown"]
+    #[serde(rename = "objectType")]
+    pub object_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resist: Option<DamageResistArray>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub senses: Option<serde_json::Value>,
+    pub size: String,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed: Option<Speed>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub srd: Option<Srd>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub str: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "tokenUrl")]
+    pub token_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vulnerable: Option<DamageVulnerabilityArray>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wis: Option<i64>,
+}
