@@ -1,6 +1,18 @@
 use super::*;
 use serde::{Deserialize, Serialize};
-pub type ArrayOfSpell = Vec<serde_json::Value>;
+pub type ArrayOfSpellItemVariant0 = String;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ArrayOfSpellItemVariant1 {
+    pub entry: String,
+    pub hidden: bool,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ArrayOfSpellItem {
+    Variant0(ArrayOfSpellItemVariant0),
+    Variant1(ArrayOfSpellItemVariant1),
+}
+pub type ArrayOfSpell = Vec<ArrayOfSpellItem>;
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "abilityGeneric")]
 pub struct AbilityGeneric {
@@ -22,8 +34,49 @@ pub struct AbilityGeneric {
     #[serde(rename = "type")]
     pub type_: serde_json::Value,
 }
-pub type DataCondImmune = serde_json::Value;
-pub type DataDamImmune = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DataCondImmuneTypeVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DataCondImmuneTypeVariant2 {
+    #[serde(rename = "conditionImmune")]
+    pub condition_immune: Vec<DataCondition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preNote")]
+    pub pre_note: Option<String>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DataCondImmuneType {
+    Variant0(DataCondition),
+    Variant1(DataCondImmuneTypeVariant1),
+    Variant2(DataCondImmuneTypeVariant2),
+}
+pub type DataCondImmune = DataCondImmuneType;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DataDamImmunePreNoteVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DataDamImmunePreNoteVariant2 {
+    pub immune: Vec<DataDamImmune>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preNote")]
+    pub pre_note: Option<String>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DataDamImmunePreNote {
+    Variant0(DataDamageType),
+    Variant1(DataDamImmunePreNoteVariant1),
+    Variant2(DataDamImmunePreNoteVariant2),
+}
+pub type DataDamImmune = DataDamImmunePreNote;
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "entry")]
 pub struct Entry {
@@ -181,10 +234,16 @@ pub struct EntryDataSpell {
     pub type_: serde_json::Value,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum EntryDataTrapHazardDataTrapHazard {
+    Variant0(Trap),
+    Variant1(Hazard),
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "entryDataTrapHazard")]
 pub struct EntryDataTrapHazard {
     #[serde(rename = "dataTrapHazard")]
-    pub data_trap_hazard: serde_json::Value,
+    pub data_trap_hazard: EntryDataTrapHazardDataTrapHazard,
     #[serde(rename = "type")]
     pub type_: serde_json::Value,
 }
@@ -550,13 +609,75 @@ pub struct EntryItemSub {
     pub type_: serde_json::Value,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct EntryLinkHrefVariant0Hover {
+    #[doc = " Optional; overrides the href hash for hover handlers."]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "hashPreEncoded")]
+    pub hash_pre_encoded: Option<bool>,
+    pub page: String,
+    pub source: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct EntryLinkHrefVariant0ItemSubhashesVariant0 {
+    pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preEncoded")]
+    pub pre_encoded: Option<bool>,
+    pub values: Vec<String>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct EntryLinkHrefVariant0ItemSubhashesVariant1 {
+    pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preEncoded")]
+    pub pre_encoded: Option<bool>,
+    pub value: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum EntryLinkHrefVariant0ItemSubhashes {
+    Variant0(EntryLinkHrefVariant0ItemSubhashesVariant0),
+    Variant1(EntryLinkHrefVariant0ItemSubhashesVariant1),
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct EntryLinkHrefVariant0 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "hashPreEncoded")]
+    pub hash_pre_encoded: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hover: Option<EntryLinkHrefVariant0Hover>,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subhashes: Option<Vec<EntryLinkHrefVariant0ItemSubhashes>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    pub type_: Option<serde_json::Value>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct EntryLinkHrefVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    pub type_: Option<serde_json::Value>,
+    pub url: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum EntryLinkHref {
+    Variant0(EntryLinkHrefVariant0),
+    Variant1(EntryLinkHrefVariant1),
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "entryLink")]
 pub struct EntryLink {
     #[doc = " A generic object for storing special data for external use-cases. Keys prefixed with \"rd-\" "]
     #[doc = " should be added as \"data-\" HTML attributes when rendering to HTML."]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<::std::collections::BTreeMap<String, serde_json::Value>>,
-    pub href: serde_json::Value,
+    pub href: EntryLinkHref,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -720,14 +841,14 @@ pub struct EntrySection {
     pub type_: serde_json::Value,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
-pub struct EntrySpellcastingItemItemItemSpells0 {
+pub struct EntrySpellcastingSpells0 {
     pub spells: Vec<String>,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct EntrySpellcastingItemItemItemSpells {
+pub struct EntrySpellcastingSpells {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "0")]
-    pub _0: Option<EntrySpellcastingItemItemItemSpells0>,
+    pub _0: Option<EntrySpellcastingSpells0>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "1")]
     pub _1: Option<EntrySpellcastingLevel1To9>,
@@ -795,7 +916,7 @@ pub struct EntrySpellcasting {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub spells: Option<EntrySpellcastingItemItemItemSpells>,
+    pub spells: Option<EntrySpellcastingSpells>,
     #[serde(rename = "type")]
     pub type_: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -920,6 +1041,25 @@ pub struct EntryTable {
     pub type_: serde_json::Value,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct EntryTableCellRollVariant0 {
+    pub max: i64,
+    pub min: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pad: Option<bool>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct EntryTableCellRollVariant1 {
+    pub exact: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pad: Option<bool>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum EntryTableCellRoll {
+    Variant0(EntryTableCellRollVariant0),
+    Variant1(EntryTableCellRollVariant1),
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "entryTableCell")]
 pub struct EntryTableCell {
     #[doc = " A generic object for storing special data for external use-cases. Keys prefixed with \"rd-\" "]
@@ -935,7 +1075,7 @@ pub struct EntryTableCell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub roll: Option<serde_json::Value>,
+    pub roll: Option<EntryTableCellRoll>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(rename = "type")]
@@ -986,7 +1126,7 @@ pub struct EntryTableRow {
     pub type_: serde_json::Value,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
-pub struct EntryVariantItemVariantSource {
+pub struct EntryVariantVariantSource {
     pub page: i64,
     pub source: String,
 }
@@ -1009,7 +1149,7 @@ pub struct EntryVariant {
     pub type_: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "variantSource")]
-    pub variant_source: Option<EntryVariantItemVariantSource>,
+    pub variant_source: Option<EntryVariantVariantSource>,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "entryVariantInner")]
@@ -1066,5 +1206,25 @@ pub struct EntryWrapped {
     pub type_: serde_json::Value,
     pub wrapped: serde_json::Value,
 }
-pub type MediaHref = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct MediaHrefWrappedVariant0 {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    pub type_: Option<serde_json::Value>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct MediaHrefWrappedVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    pub type_: Option<serde_json::Value>,
+    pub url: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum MediaHrefWrapped {
+    Variant0(MediaHrefWrappedVariant0),
+    Variant1(MediaHrefWrappedVariant1),
+}
+pub type MediaHref = MediaHrefWrapped;
 pub type EntryJson = Entry;

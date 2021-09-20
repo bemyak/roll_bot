@@ -6,40 +6,40 @@ name  = "roll_bot"
 version = "1.0.0"
 
 [profile.release]
-lto = true
+lto = "fat"
 panic = 'abort'
 
 [dependencies]
-comfy-table    = { version="4.0" }
-ejdb           = { version="0.4" }
-futures        = { version="0.3", default-features=false }
-hyper          = { version="0.14", default-features=false, features=["server"] }
-hyper-proxy    = { version="0.9", default-features=false, features=["rustls"] }
-hyper-rustls   = { version="0.22" }
-lazy_static    = { version="1.4" }
-log            = { version="0.4", default-features=false }
-ordinal        = { version="0.2" }
-peg            = { version="0.7" }
-percent-encoding = { version="2.1" }
-prometheus     = { version="0.12", default-features=false, features=["process"] }
-rand           = { version="0.8", default-features=false }
-regex          = { version="1", default-features=false }
-reqwest        = { version="0.11", default-features=false, features=["json", "rustls-tls"] }
-serde          = { version="1.0" }
-serde_json     = { version="1.0", default-features=false }
-simplelog      = { version="0.10", default-features=false }
-simsearch      = { version="0.2" }
+comfy-table    = "4.1.1"
+ejdb           = "0.4.1"
+futures        = { version = "0.3.17", default-features = false }
+hyper          = { version = "0.14.13", default-features = false, features = ["server"] }
+hyper-proxy    = { version = "0.9.1", default-features = false, features = ["rustls"] }
+hyper-rustls   = "0.22.1"
+lazy_static    = "1.4.0"
+log            = { version = "0.4.14", default-features = false }
+ordinal        = "0.2.3"
+peg            = "0.7.0"
+percent-encoding = "2.1.0"
+prometheus     = { version = "0.12.0", default-features = false, features = ["process"] }
+rand           = { version = "0.8.4", default-features = false }
+regex          = { version = "1.5.4", default-features = false }
+reqwest        = { version = "0.11.4", default-features = false, features = ["json", "rustls-tls"] }
+serde          = "1.0.130"
+serde_json     = { version = "1.0.68", default-features = false }
+simplelog      = { version = "0.10.0", default-features = false }
+simsearch      = "0.2.3"
 telegram-bot   = { git="https://github.com/telegram-rs/telegram-bot.git", branch="main", default-features=false, features=["rustls"] }
-thiserror      = { version="1.0" }
-tokio          = { version="1.5", default-features=false, features=["rt-multi-thread", "macros"] }
-zalgo          = { version="0.2" }
+thiserror      = "1.0.29"
+tokio          = { version = "1.11.0", default-features = false, features = ["rt-multi-thread", "macros"] }
+zalgo          = "0.2"
 
 [dev-dependencies]
-simplelog  = { version="0.10", default-features=false, features=["test"] }
-tokio-test = "0.4"
+simplelog  = { version = "0.10.0", default-features = false, features = ["test"] }
+tokio-test = "0.4.2"
 
 [build-dependencies]
-schemafy_lib = { path="../schemafy/schemafy_lib" }
+schemafy_lib = { git="https://github.com/bemyak/schemafy.git", branch = "fixes" }
 
 [features]
 regenerate_types = []

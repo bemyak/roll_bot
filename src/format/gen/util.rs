@@ -1,6 +1,20 @@
 use super::*;
 use serde::{Deserialize, Serialize};
-pub type AdditionalSpellArrayOfStringOrChoiceObject = Vec<serde_json::Value>;
+pub type AdditionalSpellArrayOfStringOrChoiceObjectItemVariant0 = String;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct AdditionalSpellArrayOfStringOrChoiceObjectItemVariant1 {
+    pub choose: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AdditionalSpellArrayOfStringOrChoiceObjectItem {
+    Variant0(AdditionalSpellArrayOfStringOrChoiceObjectItemVariant0),
+    Variant1(AdditionalSpellArrayOfStringOrChoiceObjectItemVariant1),
+}
+pub type AdditionalSpellArrayOfStringOrChoiceObject =
+    Vec<AdditionalSpellArrayOfStringOrChoiceObjectItem>;
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 #[serde(rename = "_additionalSpellLevelObject")]
 pub struct AdditionalSpellLevelObject {
@@ -26,13 +40,19 @@ pub struct AdditionalSpellLevelObject {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub will: Option<AdditionalSpellArrayOfStringOrChoiceObject>,
 }
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AdditionalSpellObjectUnderscore {
+    Variant0(AdditionalSpellArrayOfStringOrChoiceObject),
+    Variant1(AdditionalSpellLevelObject),
+}
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 #[serde(rename = "_additionalSpellObject")]
 pub struct AdditionalSpellObject {
     #[doc = " Spells gained when gaining a particular feature, regardless of level or caster level"]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "_")]
-    pub underscore_: Option<serde_json::Value>,
+    pub underscore_: Option<AdditionalSpellObjectUnderscore>,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 #[serde(rename = "_additionalSpellRechargeObject")]
@@ -92,19 +112,58 @@ pub struct AdditionalSpellRechargeObject {
     #[serde(rename = "9e")]
     pub _9e: Option<AdditionalSpellArrayOfStringOrChoiceObject>,
 }
-pub type SpeedVal = serde_json::Value;
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
-pub struct AdditionalSourcesItem9E {
+pub struct SpeedVal9EVariant0 {
+    pub condition: String,
+    pub number: i64,
+}
+pub type SpeedVal9EVariant1 = i64;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum SpeedVal9E {
+    Variant0(SpeedVal9EVariant0),
+    Variant1(SpeedVal9EVariant1),
+}
+pub type SpeedVal = SpeedVal9E;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct AdditionalSourcesItemNumber {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<i64>,
     pub source: String,
 }
-pub type AdditionalSources = Vec<AdditionalSourcesItem9E>;
+pub type AdditionalSources = Vec<AdditionalSourcesItemNumber>;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct AdditionalSpellsArrayItemSourceAbilityVariant0 {
+    pub choose: Vec<String>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub enum AdditionalSpellsArrayItemSourceAbilityVariant1 {
+    #[serde(rename = "str")]
+    Str,
+    #[serde(rename = "dex")]
+    Dex,
+    #[serde(rename = "con")]
+    Con,
+    #[serde(rename = "int")]
+    Int,
+    #[serde(rename = "wis")]
+    Wis,
+    #[serde(rename = "cha")]
+    Cha,
+    #[serde(rename = "inherit")]
+    Inherit,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AdditionalSpellsArrayItemSourceAbility {
+    Variant0(AdditionalSpellsArrayItemSourceAbilityVariant0),
+    Variant1(AdditionalSpellsArrayItemSourceAbilityVariant1),
+}
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 pub struct AdditionalSpellsArrayItemSource {
     #[doc = " Optionally specify the ability score used for e.g. racial spellcasting"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ability: Option<serde_json::Value>,
+    pub ability: Option<AdditionalSpellsArrayItemSourceAbility>,
     #[doc = " Expansions to a class' default spell list, from which spells can be chosen (e.g. Warlock "]
     #[doc = " Patron spells)"]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,8 +212,53 @@ pub struct ArmorProficienciesItemResourceName {
     pub shield_phb: Option<bool>,
 }
 pub type ArmorProficiencies = Vec<ArmorProficienciesItemResourceName>;
-pub type ConditionImmunityArray = serde_json::Value;
-pub type ConditionImmunityArrayPlayer = Vec<serde_json::Value>;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ConditionImmunityArrayShieldPhbVariant0ItemShieldPhbVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ConditionImmunityArrayShieldPhbVariant0ItemShieldPhbVariant2 {
+    #[serde(rename = "conditionImmune")]
+    pub condition_immune: ConditionImmunityArray,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preNote")]
+    pub pre_note: Option<String>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ConditionImmunityArrayShieldPhbVariant0ItemShieldPhb {
+    Variant0(DataCondition),
+    Variant1(ConditionImmunityArrayShieldPhbVariant0ItemShieldPhbVariant1),
+    Variant2(ConditionImmunityArrayShieldPhbVariant0ItemShieldPhbVariant2),
+}
+pub type ConditionImmunityArrayShieldPhbVariant0 =
+    Vec<ConditionImmunityArrayShieldPhbVariant0ItemShieldPhb>;
+pub type ConditionImmunityArrayShieldPhbVariant1 = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ConditionImmunityArrayShieldPhb {
+    Variant0(ConditionImmunityArrayShieldPhbVariant0),
+    Variant1(ConditionImmunityArrayShieldPhbVariant1),
+}
+pub type ConditionImmunityArray = ConditionImmunityArrayShieldPhb;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ConditionImmunityArrayPlayerItemPreNoteVariant1Choose {
+    pub from: ConditionImmunityArrayPlayer,
+}
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct ConditionImmunityArrayPlayerItemPreNoteVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub choose: Option<ConditionImmunityArrayPlayerItemPreNoteVariant1Choose>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ConditionImmunityArrayPlayerItemPreNote {
+    Variant0(DataCondition),
+    Variant1(ConditionImmunityArrayPlayerItemPreNoteVariant1),
+}
+pub type ConditionImmunityArrayPlayer = Vec<ConditionImmunityArrayPlayerItemPreNote>;
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct CopyBlockCopyTrait {
     pub name: String,
@@ -228,12 +332,147 @@ pub enum CreatureType {
     #[serde(rename = "undead")]
     Undead,
 }
-pub type DamageImmunityArray = serde_json::Value;
-pub type DamageImmunityArrayPlayer = Vec<serde_json::Value>;
-pub type DamageResistArray = serde_json::Value;
-pub type DamageResistArrayPlayer = Vec<serde_json::Value>;
-pub type DamageVulnerabilityArray = serde_json::Value;
-pub type DamageVulnerabilityArrayPlayer = Vec<serde_json::Value>;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageImmunityArraySourceVariant0ItemSourceVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageImmunityArraySourceVariant0ItemSourceVariant2 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cond: Option<bool>,
+    pub immune: DamageImmunityArray,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preNote")]
+    pub pre_note: Option<String>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageImmunityArraySourceVariant0ItemSource {
+    Variant0(DataDamageType),
+    Variant1(DamageImmunityArraySourceVariant0ItemSourceVariant1),
+    Variant2(DamageImmunityArraySourceVariant0ItemSourceVariant2),
+}
+pub type DamageImmunityArraySourceVariant0 = Vec<DamageImmunityArraySourceVariant0ItemSource>;
+pub type DamageImmunityArraySourceVariant1 = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageImmunityArraySource {
+    Variant0(DamageImmunityArraySourceVariant0),
+    Variant1(DamageImmunityArraySourceVariant1),
+}
+pub type DamageImmunityArray = DamageImmunityArraySource;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageImmunityArrayPlayerItemPreNoteVariant1Choose {
+    pub from: DamageImmunityArrayPlayer,
+}
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct DamageImmunityArrayPlayerItemPreNoteVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub choose: Option<DamageImmunityArrayPlayerItemPreNoteVariant1Choose>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageImmunityArrayPlayerItemPreNote {
+    Variant0(DataDamageType),
+    Variant1(DamageImmunityArrayPlayerItemPreNoteVariant1),
+}
+pub type DamageImmunityArrayPlayer = Vec<DamageImmunityArrayPlayerItemPreNote>;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageResistArrayFromVariant0ItemFromVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageResistArrayFromVariant0ItemFromVariant2 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cond: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preNote")]
+    pub pre_note: Option<String>,
+    pub resist: DamageResistArray,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageResistArrayFromVariant0ItemFrom {
+    Variant0(DataDamageType),
+    Variant1(DamageResistArrayFromVariant0ItemFromVariant1),
+    Variant2(DamageResistArrayFromVariant0ItemFromVariant2),
+}
+pub type DamageResistArrayFromVariant0 = Vec<DamageResistArrayFromVariant0ItemFrom>;
+pub type DamageResistArrayFromVariant1 = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageResistArrayFrom {
+    Variant0(DamageResistArrayFromVariant0),
+    Variant1(DamageResistArrayFromVariant1),
+}
+pub type DamageResistArray = DamageResistArrayFrom;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageResistArrayPlayerItemResistVariant1Choose {
+    pub from: DamageResistArrayPlayer,
+}
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct DamageResistArrayPlayerItemResistVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub choose: Option<DamageResistArrayPlayerItemResistVariant1Choose>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageResistArrayPlayerItemResist {
+    Variant0(DataDamageType),
+    Variant1(DamageResistArrayPlayerItemResistVariant1),
+}
+pub type DamageResistArrayPlayer = Vec<DamageResistArrayPlayerItemResist>;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageVulnerabilityArrayFromVariant0ItemFromVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageVulnerabilityArrayFromVariant0ItemFromVariant2 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cond: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "preNote")]
+    pub pre_note: Option<String>,
+    pub vulnerable: DamageVulnerabilityArray,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageVulnerabilityArrayFromVariant0ItemFrom {
+    Variant0(DataDamageType),
+    Variant1(DamageVulnerabilityArrayFromVariant0ItemFromVariant1),
+    Variant2(DamageVulnerabilityArrayFromVariant0ItemFromVariant2),
+}
+pub type DamageVulnerabilityArrayFromVariant0 = Vec<DamageVulnerabilityArrayFromVariant0ItemFrom>;
+pub type DamageVulnerabilityArrayFromVariant1 = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageVulnerabilityArrayFrom {
+    Variant0(DamageVulnerabilityArrayFromVariant0),
+    Variant1(DamageVulnerabilityArrayFromVariant1),
+}
+pub type DamageVulnerabilityArray = DamageVulnerabilityArrayFrom;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct DamageVulnerabilityArrayPlayerItemVulnerableVariant1Choose {
+    pub from: DamageVulnerabilityArrayPlayer,
+}
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct DamageVulnerabilityArrayPlayerItemVulnerableVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub choose: Option<DamageVulnerabilityArrayPlayerItemVulnerableVariant1Choose>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DamageVulnerabilityArrayPlayerItemVulnerable {
+    Variant0(DataDamageType),
+    Variant1(DamageVulnerabilityArrayPlayerItemVulnerableVariant1),
+}
+pub type DamageVulnerabilityArrayPlayer = Vec<DamageVulnerabilityArrayPlayerItemVulnerable>;
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "dataCondition")]
 pub enum DataCondition {
@@ -359,7 +598,7 @@ pub enum DataOptionalfeatureType {
     Af,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct ExpertiseItemSource {
+pub struct ExpertiseItemFrom {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub acrobatics: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -489,7 +728,7 @@ pub struct ExpertiseItemSource {
     #[serde(rename = "woodcarver's tools")]
     pub woodcarver_s_tools: Option<bool>,
 }
-pub type Expertise = Vec<ExpertiseItemSource>;
+pub type Expertise = Vec<ExpertiseItemFrom>;
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 #[serde(rename = "fluffObject")]
 pub struct FluffObject {
@@ -499,13 +738,21 @@ pub struct FluffObject {
     pub images: Option<Vec<EntryImage>>,
 }
 pub type GenericFluffArray = Vec<serde_json::Value>;
+pub type GenericFluffArrayItemDataImagesVariant0 = Vec<EntryImage>;
+pub type GenericFluffArrayItemDataImagesVariant1 = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum GenericFluffArrayItemDataImages {
+    Variant0(GenericFluffArrayItemDataImagesVariant0),
+    Variant1(GenericFluffArrayItemDataImagesVariant1),
+}
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 #[serde(rename = "genericFluffArrayItemData")]
 pub struct GenericFluffArrayItemData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entries: Option<Vec<EntryJson>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub images: Option<serde_json::Value>,
+    pub images: Option<GenericFluffArrayItemDataImages>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -610,7 +857,7 @@ pub struct MetaBlockDependencies {
     pub monster: Option<Vec<String>>,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct MetaBlockDependenciesItemOtherSources {
+pub struct MetaBlockOtherSources {
     #[doc = " Keys are other sources to be loaded; values are `otherSources` sources from that source to "]
     #[doc = " search for."]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -623,7 +870,7 @@ pub struct MetaBlock {
     pub dependencies: Option<MetaBlockDependencies>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "otherSources")]
-    pub other_sources: Option<MetaBlockDependenciesItemOtherSources>,
+    pub other_sources: Option<MetaBlockOtherSources>,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct OtherSourcesItemMonster {
@@ -648,21 +895,58 @@ pub struct PrerequisiteItemSourceItemAbility {
     pub wis: Option<i64>,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
-pub struct PrerequisiteItemSourceItemAbilityItemItemOtherSummary {
+pub struct PrerequisiteItemSourceLevelVariant0Class {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[doc = " Governs whether or not the class name is visible in the list display/prerequisite line. "]
+    #[doc = " *Not* recommended for features which implicitly carry a class restriction, such as Eldritch "]
+    #[doc = " Invocations."]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct PrerequisiteItemSourceLevelVariant0Subclass {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[doc = " Governs whether or not the class name is visible in the list display/prerequisite line. "]
+    #[doc = " *Not* recommended for features which implicitly carry a class restriction, such as Eldritch "]
+    #[doc = " Invocations."]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct PrerequisiteItemSourceLevelVariant0 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub class: Option<PrerequisiteItemSourceLevelVariant0Class>,
+    pub level: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subclass: Option<PrerequisiteItemSourceLevelVariant0Subclass>,
+}
+pub type PrerequisiteItemSourceLevelVariant1 = i64;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum PrerequisiteItemSourceLevel {
+    Variant0(PrerequisiteItemSourceLevelVariant0),
+    Variant1(PrerequisiteItemSourceLevelVariant1),
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct PrerequisiteItemSourceOtherSummary {
     pub entry: String,
     #[doc = " Used in short/list displays"]
     #[serde(rename = "entrySummary")]
     pub entry_summary: String,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct PrerequisiteItemSourceItemAbilityItemItemOtherSummaryItemProficiency {
+pub struct PrerequisiteItemSourceItemProficiency {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub armor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weapon: Option<String>,
 }
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
-pub struct PrerequisiteItemSourceItemAbilityItemItemOtherSummaryItemProficiencyItemRace {
+pub struct PrerequisiteItemSourceItemRace {
     #[doc = " Optional long-form name to be used in the rendered entity."]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "displayEntry")]
@@ -680,26 +964,24 @@ pub struct PrerequisiteItemSource {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub item: Option<Vec<EntryJson>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub level: Option<serde_json::Value>,
+    pub level: Option<PrerequisiteItemSourceLevel>,
     #[doc = " A free text prerequisite"]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub other: Option<String>,
     #[doc = " A free text prerequisite, with a shortened form for list display."]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "otherSummary")]
-    pub other_summary: Option<PrerequisiteItemSourceItemAbilityItemItemOtherSummary>,
+    pub other_summary: Option<PrerequisiteItemSourceOtherSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pact: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patron: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub proficiency:
-        Option<Vec<PrerequisiteItemSourceItemAbilityItemItemOtherSummaryItemProficiency>>,
+    pub proficiency: Option<Vec<PrerequisiteItemSourceItemProficiency>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub psionics: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub race:
-        Option<Vec<PrerequisiteItemSourceItemAbilityItemItemOtherSummaryItemProficiencyItemRace>>,
+    pub race: Option<Vec<PrerequisiteItemSourceItemRace>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spell: Option<Vec<EntryJson>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -828,9 +1110,26 @@ pub enum SkillNameLower {
     Persuasion,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct SkillProficienciesItemWisChooseItemFromVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<Vec<String>>,
+}
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct SkillProficienciesItemWisChooseItemFromVariant2 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<bool>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum SkillProficienciesItemWisChooseItemFrom {
+    Variant0(SkillNameLower),
+    Variant1(SkillProficienciesItemWisChooseItemFromVariant1),
+    Variant2(SkillProficienciesItemWisChooseItemFromVariant2),
+}
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 pub struct SkillProficienciesItemWisChoose {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub from: Option<Vec<serde_json::Value>>,
+    pub from: Option<Vec<SkillProficienciesItemWisChooseItemFrom>>,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 pub struct SkillProficienciesItemWis {
@@ -878,21 +1177,78 @@ pub struct SkillProficienciesItemWis {
     pub tool: Option<bool>,
 }
 pub type SkillProficiencies = Vec<SkillProficienciesItemWis>;
-pub type Speed = serde_json::Value;
-pub type Srd = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct SpeedToolVariant0Alternate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burrow: Option<Vec<SpeedVal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub climb: Option<Vec<SpeedVal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fly: Option<Vec<SpeedVal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub swim: Option<Vec<SpeedVal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub walk: Option<Vec<SpeedVal>>,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct SpeedToolVariant0Choose {
+    pub amount: i64,
+    pub from: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+#[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
+pub struct SpeedToolVariant0 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternate: Option<SpeedToolVariant0Alternate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burrow: Option<SpeedVal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "canHover")]
+    pub can_hover: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub choose: Option<SpeedToolVariant0Choose>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub climb: Option<SpeedVal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fly: Option<SpeedVal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub swim: Option<SpeedVal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub walk: Option<SpeedVal>,
+}
+pub type SpeedToolVariant1 = i64;
+pub type SpeedToolVariant2 = serde_json::Value;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum SpeedTool {
+    Variant0(SpeedToolVariant0),
+    Variant1(SpeedToolVariant1),
+    Variant2(SpeedToolVariant2),
+}
+pub type Speed = SpeedTool;
+pub type SrdWalkVariant0 = bool;
+pub type SrdWalkVariant1 = String;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum SrdWalk {
+    Variant0(SrdWalkVariant0),
+    Variant1(SrdWalkVariant1),
+}
+pub type Srd = SrdWalk;
 #[doc = " Optional well-structured data version of the \"default\" property, for use in applications that "]
 #[doc = " require it."]
 pub type StartingEquipment = Vec<::std::collections::BTreeMap<String, serde_json::Value>>;
 pub type TagsConditions = Vec<String>;
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct ToolProficienciesItemToolChoose {
+pub struct ToolProficienciesItemWalkChoose {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<Vec<serde_json::Value>>,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct ToolProficienciesItemTool {
+pub struct ToolProficienciesItemWalk {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "alchemist's supplies")]
     pub alchemist_s_supplies: Option<bool>,
@@ -914,7 +1270,7 @@ pub struct ToolProficienciesItemTool {
     #[serde(rename = "cartographer's tools")]
     pub cartographer_s_tools: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub choose: Option<ToolProficienciesItemToolChoose>,
+    pub choose: Option<ToolProficienciesItemWalkChoose>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "cobbler's tools")]
     pub cobbler_s_tools: Option<bool>,
@@ -982,7 +1338,7 @@ pub struct ToolProficienciesItemTool {
     #[serde(rename = "woodcarver's tools")]
     pub woodcarver_s_tools: Option<bool>,
 }
-pub type ToolProficiencies = Vec<ToolProficienciesItemTool>;
+pub type ToolProficiencies = Vec<ToolProficienciesItemWalk>;
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 pub struct WeaponProficienciesItemWoodcarverSToolsChoose {
     #[serde(skip_serializing_if = "Option::is_none")]

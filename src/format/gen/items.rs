@@ -22,16 +22,59 @@ pub struct ItemDataAbility {
     pub wis: Option<i64>,
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct ItemDataAbilityItemItemContainerCapacityItemItem {}
+pub struct ItemDataContainerCapacityItemItem {}
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-pub struct ItemDataAbilityItemItemContainerCapacity {
+pub struct ItemDataContainerCapacity {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub item: Option<Vec<ItemDataAbilityItemItemContainerCapacityItemItem>>,
+    pub item: Option<Vec<ItemDataContainerCapacityItemItem>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weight: Option<Vec<i64>>,
     #[doc = " If the container renders its contents weightless."]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weightless: Option<bool>,
+}
+pub type ItemDataFocusVariant0 = bool;
+pub type ItemDataFocusVariant1 = Vec<String>;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ItemDataFocus {
+    Variant0(ItemDataFocusVariant0),
+    Variant1(ItemDataFocusVariant1),
+}
+pub type ItemDataItemPackContentsVariant0 = String;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ItemDataItemPackContentsVariant1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantity: Option<i64>,
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ItemDataItemPackContentsVariant2 {
+    pub item: String,
+    pub quantity: i64,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ItemDataItemPackContents {
+    Variant0(ItemDataItemPackContentsVariant0),
+    Variant1(ItemDataItemPackContentsVariant1),
+    Variant2(ItemDataItemPackContentsVariant2),
+}
+pub type ItemDataReqAttuneVariant0 = String;
+pub type ItemDataReqAttuneVariant1 = bool;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ItemDataReqAttune {
+    Variant0(ItemDataReqAttuneVariant0),
+    Variant1(ItemDataReqAttuneVariant1),
+}
+pub type ItemDataReqAttuneAltVariant0 = String;
+pub type ItemDataReqAttuneAltVariant1 = bool;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ItemDataReqAttuneAlt {
+    Variant0(ItemDataReqAttuneAltVariant0),
+    Variant1(ItemDataReqAttuneAltVariant1),
 }
 #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
 #[serde(rename = "itemData")]
@@ -121,7 +164,7 @@ pub struct ItemData {
     pub condition_immune: Option<ConditionImmunityArray>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "containerCapacity")]
-    pub container_capacity: Option<ItemDataAbilityItemItemContainerCapacity>,
+    pub container_capacity: Option<ItemDataContainerCapacity>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crew: Option<i64>,
     #[doc = " For crews specified as an X-Y min-max."]
@@ -160,7 +203,7 @@ pub struct ItemData {
     pub firearm: Option<bool>,
     #[doc = " Item can be used as a spellcasting focus"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub focus: Option<serde_json::Value>,
+    pub focus: Option<ItemDataFocus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "grantsProficiency")]
     pub grants_proficiency: Option<bool>,
@@ -188,7 +231,7 @@ pub struct ItemData {
     pub other_sources: Option<OtherSources>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "packContents")]
-    pub pack_contents: Option<Vec<serde_json::Value>>,
+    pub pack_contents: Option<Vec<ItemDataItemPackContents>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -210,11 +253,11 @@ pub struct ItemData {
     pub reload: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "reqAttune")]
-    pub req_attune: Option<serde_json::Value>,
+    pub req_attune: Option<ItemDataReqAttune>,
     #[doc = " Used for filtering."]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "reqAttuneAlt")]
-    pub req_attune_alt: Option<serde_json::Value>,
+    pub req_attune_alt: Option<ItemDataReqAttuneAlt>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "reqAttuneAltTags")]
     pub req_attune_alt_tags: Option<ReqAttuneTags>,

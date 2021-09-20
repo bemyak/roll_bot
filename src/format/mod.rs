@@ -6,7 +6,8 @@ pub mod roll;
 pub mod spell;
 pub mod telegram;
 pub mod utils;
-mod gen;
+// Not in use yet
+// mod gen;
 
 use std::fmt::Write;
 

@@ -21,15 +21,20 @@ fn regenerate_types() {
         gen_path.join("entry.rs").as_path(),
         Some("EntryJson"),
     );
+    gen_types(
+        data_path.join("util.json").as_path(),
+        gen_path.join("util.rs").as_path(),
+        None,
+    );
+    gen_types(
+        data_path.join("trapshazards.json").as_path(),
+        gen_path.join("trapshazards.rs").as_path(),
+        None,
+    );
 
     gen_types(
         data_path.join("bestiary/bestiary.json").as_path(),
         gen_path.join("bestiary.rs").as_path(),
-        None,
-    );
-    gen_types(
-        data_path.join("util.json").as_path(),
-        gen_path.join("util.rs").as_path(),
         None,
     );
     gen_types(

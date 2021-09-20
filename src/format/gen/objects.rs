@@ -1,10 +1,32 @@
 use super::*;
 use serde::{Deserialize, Serialize};
+pub type ObjectAcVariant0 = i64;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ObjectAcVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ObjectAc {
+    Variant0(ObjectAcVariant0),
+    Variant1(ObjectAcVariant1),
+}
+pub type ObjectHpVariant0 = i64;
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+pub struct ObjectHpVariant1 {
+    pub special: String,
+}
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ObjectHp {
+    Variant0(ObjectHpVariant0),
+    Variant1(ObjectHpVariant1),
+}
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "object")]
 pub struct Object {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ac: Option<serde_json::Value>,
+    pub ac: Option<ObjectAc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "actionEntries")]
     pub action_entries: Option<Vec<EntryJson>>,
@@ -25,7 +47,7 @@ pub struct Object {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "hasToken")]
     pub has_token: Option<bool>,
-    pub hp: serde_json::Value,
+    pub hp: ObjectHp,
     pub immune: DamageImmunityArray,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub int: Option<i64>,
