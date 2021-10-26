@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     loop {
-        let bot = telegram::Bot::new().await?;
+        let bot = telegram::RollBot::new().await?;
         bot.start().await;
         error!("The bot has crashed! Restarting...");
     }

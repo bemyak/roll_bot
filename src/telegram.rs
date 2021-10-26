@@ -1,18 +1,28 @@
 use std::{borrow::Cow, cmp::min, env, error::Error, mem, sync::Arc, time::Instant};
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use hyper::Client;
 use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_rustls::HttpsConnector;
 use regex::{Captures, Regex};
-use telegram_bot::{
-    connector::{default_connector, hyper::HyperConnector, Connector},
-    prelude::*,
-    reply_markup,
-    types::reply_markup::*,
-    Api, CallbackQuery, GetMe, Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode,
-    Update, UpdateKind, User,
+use teloxide::adaptors::throttle::Limits;
+use teloxide::adaptors::{AutoSend, Throttle};
+use teloxide::dispatching::update_listeners::{self, AsUpdateStream};
+use teloxide::requests::{Requester, RequesterExt};
+use teloxide::types::ChatKind::{self, Private, Public};
+use teloxide::types::{
+    CallbackQuery, ForceReply, InlineKeyboardMarkup, Message, MessageKind, ParseMode,
+    PublicChatKind, ReplyMarkup, Update, UpdateKind, User,
 };
+use teloxide::{ApiError, Bot};
+// use telegram_bot::{
+//     connector::{default_connector, hyper::HyperConnector, Connector},
+//     prelude::*,
+//     reply_markup,
+//     types::reply_markup::*,
+//     Api, CallbackQuery, GetMe, Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode,
+//     Update, UpdateKind, User,
+// };
 use thiserror::Error;
 use tokio::task;
 
@@ -23,20 +33,19 @@ use crate::DB;
 use crate::PROJECT_URL;
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 
-lazy_static! {
-    static ref INITIAL_MARKUP: ReplyKeyboardMarkup = reply_markup!(
-        reply_keyboard,
-        resize,
-        ["/roll", "/monster"],
-        ["/spell", "/item"]
-    );
-}
+// lazy_static! {
+//     static ref INITIAL_MARKUP: ReplyKeyboardMarkup = reply_markup!(
+//         reply_keyboard,
+//         resize,
+//         ["/roll", "/monster"],
+//         ["/spell", "/item"]
+//     );
+// }
 
 #[derive(Error, Debug)]
 pub enum BotError {
     #[error("Telegram Error")]
-    Telegram(#[from] telegram_bot::Error),
-
+    TelegramError(ApiError),
     #[error("Database Error")]
     Db(#[from] ejdb::Error),
 
@@ -47,28 +56,40 @@ pub enum BotError {
     EntryFormat,
 }
 
-pub struct Bot {
-    api: Api,
-    me: User,
+pub struct RollBot {
+    api: Throttle<AutoSend<Bot>>,
+    // me: User,
 }
 
-impl Bot {
+impl Stream for RollBot {
+    type Item = Message;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        todo!()
+    }
+}
+
+impl RollBot {
     pub async fn new() -> Result<Self, BotError> {
         let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
             error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
             std::process::exit(1)
         });
 
-        let connector = get_connector();
-        let api = Api::with_connector(token, connector);
-        let me = api.send(GetMe).await?;
+        // let connector = get_connector();
+        // let api = Api::with_connector(token, connector);
+        let api = Bot::new(token).auto_send().throttle(Limits::default());
+        let me = api.get_me().await?;
 
-        Ok(Self { api, me })
+        Ok(Self { api })
     }
 
     pub async fn start(self) {
         info!("Started successfully");
-        let mut stream = self.api.stream();
+        let mut stream = update_listeners::polling_default(self.api).await.as_stream();
 
         let s = Arc::new(self);
 
@@ -115,9 +136,7 @@ impl Bot {
             callback_query.data
         );
         let callback_query = callback_query.clone();
-        if let (Some(data), Some(MessageOrChannelPost::Message(msg))) =
-            (callback_query.data, callback_query.message)
-        {
+        if let (Some(data), Some(msg)) = (callback_query.data, callback_query.message) {
             let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
                 if sep_i < data.len() - 1 {
                     (&data[0..sep_i], &data[sep_i + 1..data.len()])
@@ -136,30 +155,31 @@ impl Bot {
 
     async fn process_message(&self, message: &Message) -> Result<(), BotError> {
         // We don't want to speak to other bots
-        if message.from.is_bot {
-            info!("Message from bot received: {:?}", message.kind);
-            if !is_group(message) {
-                self.help(message, "").await?;
-            }
-            return Ok(());
-        }
+        // if message.from().is_bot() {
+        //     info!("Message from bot received: {:?}", message.kind);
+        //     if !is_group(message) {
+        //         self.help(&message, "").await?;
+        //     }
+        //     return Ok(());
+        // }
 
         let start_processing = Instant::now();
-        if let MessageKind::Text { data, entities } = &message.kind {
+
+        let entities = message.entities();
+        let data = message.text().unwrap_or_else(|| return Ok(()));
+
+        if let MessageKind::Common { data, entities } = &message.kind {
             trace!(
                 "Got message from @{}: {}",
                 message
-                    .from
-                    .username
-                    .as_ref()
-                    .unwrap_or(&"unknown".to_string()),
+                    .from()
+                    .map(User::full_name)
+                    .unwrap_or("unknown".to_string()),
                 data
             );
             // No command was specified, but maybe it is a response to the previous command
             if entities.is_empty() {
-                if let Some(MessageOrChannelPost::Message(reply)) =
-                    message.reply_to_message.clone().map(|reply| *reply)
-                {
+                if let Some(reply) = message.reply_to_message.clone().map(|reply| *reply) {
                     if let MessageKind::Text {
                         data: reply_data,
                         entities: _,
@@ -259,7 +279,7 @@ impl Bot {
         cmd: String,
         data: String,
         err: BotError,
-    ) -> Result<Option<String>, telegram_bot::Error> {
+    ) -> Result<Option<String>, ApiError> {
         let url = format!("{}/-/issues/new?issue[title]=Error while processing command {}&issue[description]={}\n{}", PROJECT_URL, cmd, data, err);
         let msg = format!(
             "Oops! An error occurred :(\nPlease, [submit a bug report]({})",
@@ -293,17 +313,18 @@ impl Bot {
     }
 
     async fn help(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
-        lazy_static! {
-            static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
-                ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://www.buymeacoffee.com/bemyak", "Chat with author" url "https://t.me/bemyak"]
-            );
-        }
+        // TODO: restore kbd
+        // lazy_static! {
+        //     static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
+        //         ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://www.buymeacoffee.com/bemyak", "Chat with author" url "https://t.me/bemyak"]
+        //     );
+        // }
 
         let mut request = match arg {
             "roll" => message.chat.text(help_roll_message()),
             _ => {
                 let mut msg = message.chat.text(help_message());
-                msg.reply_markup(HELP_MARKUP.clone());
+                // msg.reply_markup(HELP_MARKUP.clone());
                 msg
             }
         };
@@ -369,7 +390,7 @@ impl Bot {
     ) -> Result<Option<String>, BotError> {
         if arg.is_empty() {
             let mut force_reply = ForceReply::new();
-            force_reply.selective();
+            force_reply.selective(true);
 
             self.api
                 .send(
@@ -395,7 +416,7 @@ impl Bot {
 
         match exact_match_result {
             Some(mut item) => {
-                let mut keyboard = InlineKeyboardMarkup::new();
+                let mut keyboard = InlineKeyboardMarkup::new([]);
                 replace_links(&mut item, &mut keyboard);
                 let mut msg = match lookup_item.type_ {
                     crate::collection::CollectionType::Item => item.format_item(),
@@ -413,7 +434,7 @@ impl Bot {
                 Ok(Some(msg))
             }
             None => {
-                let mut keyboard = InlineKeyboardMarkup::new();
+                let mut keyboard = InlineKeyboardMarkup::new([]);
                 let mut found = false;
 
                 for collection in lookup_item.collections {
@@ -423,7 +444,7 @@ impl Bot {
 
                     results.iter().for_each(|item| {
                         let command = format!("{} {}", lookup_item.get_default_command(), item);
-                        let button = InlineKeyboardButton::callback(item.clone(), command);
+                        let button = InlineKeyboardMarkup::callback(item.clone(), command);
 
                         found = true;
                         keyboard.add_row(vec![button]);
@@ -460,7 +481,7 @@ impl Bot {
         msg: &Message,
         text: &str,
         keyboard: Option<ReplyMarkup>,
-    ) -> Result<(), telegram_bot::Error> {
+    ) -> Result<(), ApiError> {
         if text.is_empty() {
             return Ok(());
         }
@@ -488,28 +509,28 @@ impl Bot {
 }
 
 fn is_group(msg: &Message) -> bool {
-    matches!(msg.chat, MessageChat::Group(_)) || matches!(msg.chat, MessageChat::Supergroup(_))
+    matches!(msg.chat.kind, ChatKind::Public(_))
 }
 
-pub fn get_connector() -> Box<dyn Connector> {
-    env::var("roll_bot_http_proxy")
-        .or_else(|_| env::var("ROLL_BOT_HTTP_PROXY"))
-        .or_else(|_| env::var("http_proxy"))
-        .or_else(|_| env::var("HTTP_PROXY"))
-        .or_else(|_| env::var("https_proxy"))
-        .or_else(|_| env::var("HTTPS_PROXY"))
-        .map_err(Into::<Box<dyn Error>>::into)
-        .and_then(|proxy_url| {
-            info!("Running with proxy: {}", proxy_url);
-            let connector = HttpsConnector::with_native_roots();
-            let proxy = Proxy::new(Intercept::All, proxy_url.parse()?);
-            let connector = ProxyConnector::from_proxy(connector, proxy)?;
-            let connector: Box<dyn Connector> =
-                Box::new(HyperConnector::new(Client::builder().build(connector)));
-            Ok(connector)
-        })
-        .unwrap_or_else(|_| default_connector())
-}
+// pub fn get_connector() -> Box<dyn Connector> {
+//     env::var("roll_bot_http_proxy")
+//         .or_else(|_| env::var("ROLL_BOT_HTTP_PROXY"))
+//         .or_else(|_| env::var("http_proxy"))
+//         .or_else(|_| env::var("HTTP_PROXY"))
+//         .or_else(|_| env::var("https_proxy"))
+//         .or_else(|_| env::var("HTTPS_PROXY"))
+//         .map_err(Into::<Box<dyn Error>>::into)
+//         .and_then(|proxy_url| {
+//             info!("Running with proxy: {}", proxy_url);
+//             let connector = HttpsConnector::with_native_roots();
+//             let proxy = Proxy::new(Intercept::All, proxy_url.parse()?);
+//             let connector = ProxyConnector::from_proxy(connector, proxy)?;
+//             let connector: Box<dyn Connector> =
+//                 Box::new(HyperConnector::new(Client::builder().build(connector)));
+//             Ok(connector)
+//         })
+//         .unwrap_or_else(|_| default_connector())
+// }
 
 pub fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
     let keys: Vec<String> = doc.keys().cloned().collect();

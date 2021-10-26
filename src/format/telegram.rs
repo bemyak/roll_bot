@@ -1,13 +1,19 @@
-use telegram_bot::MessageChat;
+use teloxide::types::ChatKind;
 
 use crate::PROJECT_URL;
 
-pub fn chat_type_to_string(chat_type: &MessageChat) -> &'static str {
+pub fn chat_type_to_string(chat_type: &ChatKind) -> &'static str {
     match chat_type {
-        MessageChat::Private(_) => "private",
-        MessageChat::Group(_) => "group",
-        MessageChat::Supergroup(_) => "supergroup",
-        MessageChat::Unknown(_) => "unknown",
+        ChatKind::Public(c) => match c.kind {
+            teloxide::types::PublicChatKind::Channel(_) => "channel",
+            teloxide::types::PublicChatKind::Group(_) => "group",
+            teloxide::types::PublicChatKind::Supergroup(_) => "supergroup",
+        },
+        ChatKind::Private(c) => "private",
+        // MessageChat::Private(_) => "private",
+        // MessageChat::Group(_) => "group",
+        // MessageChat::Supergroup(_) => "supergroup",
+        // MessageChat::Unknown(_) => "unknown",
     }
 }
 
