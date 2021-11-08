@@ -35,16 +35,16 @@ lazy_static! {
 #[derive(Error, Debug)]
 pub enum BotError {
     #[error("Telegram Error")]
-    TelegramError(#[from] telegram_bot::Error),
+    Telegram(#[from] telegram_bot::Error),
 
     #[error("Database Error")]
-    DbError(#[from] ejdb::Error),
+    Db(#[from] ejdb::Error),
 
     #[error("Die Format Error")]
-    DieFormatError(#[from] DieFormatError),
+    DieFormat(#[from] DieFormatError),
 
     #[error("Entry Format Error")]
-    EntryFormatError,
+    EntryFormat,
 }
 
 pub struct Bot {
@@ -139,7 +139,7 @@ impl Bot {
         if message.from.is_bot {
             info!("Message from bot received: {:?}", message.kind);
             if !is_group(message) {
-                self.help(&message, "").await?;
+                self.help(message, "").await?;
             }
             return Ok(());
         }
@@ -171,7 +171,7 @@ impl Bot {
                         let _ = iter.next();
 
                         if let Some(collection) = iter.next() {
-                            self.execute_command(collection, data, &message).await?;
+                            self.execute_command(collection, data, message).await?;
                         }
                     }
                 }
@@ -200,7 +200,7 @@ impl Bot {
                 let cmd = cmd.as_str();
                 let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
 
-                let cmd_result = self.execute_command(&cmd, &arg, &message).await;
+                let cmd_result = self.execute_command(cmd, arg, message).await;
 
                 timer.observe_duration();
 
@@ -376,7 +376,7 @@ impl Bot {
                     message
                         .chat
                         .text(format!(
-                            "What {} should I look for? Please, *reply* on this message with a name:",
+                            "What {} should I look for? Please, *reply* to this message with a name:",
                             lookup_item.get_default_command()
                         ))
                         .parse_mode(ParseMode::Markdown)
@@ -402,7 +402,7 @@ impl Bot {
                     crate::collection::CollectionType::Monster => item.format_monster(),
                     crate::collection::CollectionType::Spell => item.format_spell(),
                 }
-                .ok_or(BotError::EntryFormatError)?;
+                .ok_or(BotError::EntryFormat)?;
                 replace_string_links(&mut msg, &mut keyboard);
                 self.split_and_send(
                     message,
@@ -432,7 +432,7 @@ impl Bot {
 
                 let mut msg = if found {
                     format!(
-                        "I don't have any {} with this exact name, but these looks similar:",
+                        "I don't have any {} with this exact name, but these look similar:",
                         lookup_item.get_default_command()
                     )
                 } else {
@@ -585,10 +585,8 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
                         format!("{}: {}", item.get_default_command(), nice_str),
                         format!("{} {}", item.get_default_command(), arg1),
                     )]);
-                    format!("_{}_", nice_str)
-                } else {
-                    format!("_{}_", nice_str)
                 }
+                format!("_{}_", nice_str)
             }
         }
     });

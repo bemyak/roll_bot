@@ -20,7 +20,7 @@ pub fn tg_decode(msg: &str) -> String {
     lazy_static! {
         static ref CHAR_REGEX: Regex = Regex::new(r"_([\dA-F]{2})_").unwrap();
     }
-    let url_encoded = CHAR_REGEX.replace_all(&msg, "%${1}");
+    let url_encoded = CHAR_REGEX.replace_all(msg, "%${1}");
     percent_decode(url_encoded.as_bytes())
         .decode_utf8_lossy()
         .to_string()

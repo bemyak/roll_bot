@@ -41,10 +41,10 @@ impl Item for Document {
         let type_ = self.get_type();
         let (type_abbreviation, type_additional_abbreviation) = if let Some(type_) = &type_ {
             (
-                DB.find_one_by("itemType", "abbreviation", &type_)
+                DB.find_one_by("itemType", "abbreviation", type_)
                     .ok()
                     .flatten(),
-                DB.find_one_by("itemTypeAdditionalEntries", "appliesTo", &type_)
+                DB.find_one_by("itemTypeAdditionalEntries", "appliesTo", type_)
                     .ok()
                     .flatten(),
             )

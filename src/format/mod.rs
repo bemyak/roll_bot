@@ -300,7 +300,7 @@ fn demarkup(s: &str) -> String {
         static ref MONO: Regex = Regex::new(r"`(.+?)`").unwrap();
     }
 
-    let s = BOLD.replace_all(&s, "$1");
+    let s = BOLD.replace_all(s, "$1");
     let s = ITALIC.replace_all(&s, "$1");
     let s = STRIKE.replace_all(&s, "$1");
     let s = MONO.replace_all(&s, "$1");

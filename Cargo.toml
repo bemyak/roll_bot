@@ -1,6 +1,6 @@
 [package]
 authors = ["Sergei Gureev <bemyak@pm.me>"]
-edition = "2018"
+edition = "2021"
 include = ["src/**/*", "LICENSE", "README.md"]
 name  = "roll_bot"
 version = "1.0.0"
@@ -10,7 +10,7 @@ lto = "fat"
 panic = 'abort'
 
 [dependencies]
-comfy-table    = "4.1.1"
+comfy-table    = "5.0.0"
 ejdb           = "0.4.1"
 futures        = { version = "0.3.17", default-features = false }
 hyper          = { version = "0.14.14", default-features = false, features = ["server"] }
@@ -23,7 +23,7 @@ peg            = "0.7.0"
 percent-encoding = "2.1.0"
 prometheus     = { version = "0.13.0", default-features = false, features = ["process"] }
 rand           = { version = "0.8.4", default-features = false }
-regex          = { version = "1.5.4", default-features = false }
+regex          = "1.5.4"
 reqwest        = { version = "0.11.6", default-features = false, features = ["json", "rustls-tls"] }
 serde          = "1.0.130"
 serde_json     = { version = "1.0.68", default-features = false }

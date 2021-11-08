@@ -253,7 +253,7 @@ impl Inner {
             .for_each(|collection: &CollectionName| {
                 let collection = *collection;
                 let mut engine = SimSearch::new_with(get_search_options());
-                DndDatabase::list_items(&self.db, &collection)
+                DndDatabase::list_items(&self.db, collection)
                     .unwrap_or_default()
                     .into_iter()
                     .for_each(|item| {
