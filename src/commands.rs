@@ -53,7 +53,7 @@ impl BotCommand for RollBotCommand {
         }
         let args = words.next().unwrap_or("").to_string();
 
-        let cmd = &command_raw[1..];
+        let cmd = command_raw.strip_prefix('/').unwrap_or(command_raw);
         match cmd {
             "help" | "h" | "about" | "start" => Ok(RollBotCommand::Help(
                 HelpOptions::from_str(&args)
