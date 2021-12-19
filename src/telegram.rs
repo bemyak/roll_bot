@@ -1,15 +1,16 @@
-use std::{borrow::Cow, env, time::Instant};
+use std::{borrow::Cow, cmp::min, env, time::Instant};
 
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 use regex::{Captures, Regex};
 use thiserror::Error;
 
 use teloxide::{
-    adaptors::{throttle::Limits, Throttle},
+    adaptors::{throttle::Limits, CacheMe, Throttle},
     payloads::SendMessageSetters,
     prelude::*,
     types::{ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup},
-    ApiError, RequestError,
+    utils::command::{BotCommand, ParseError},
+    RequestError,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -27,13 +28,18 @@ use crate::{
     DB,
 };
 
+type RollBot = AutoSend<Throttle<CacheMe<Bot>>>;
+
 pub async fn start() {
     let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
         error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
         std::process::exit(1)
     });
 
-    let bot = Bot::new(token).throttle(Limits::default()).auto_send();
+    let bot = Bot::new(token)
+        .cache_me()
+        .throttle(Limits::default())
+        .auto_send();
     let bot_name = bot
         .get_me()
         .await
@@ -63,13 +69,16 @@ pub async fn start() {
 pub enum BotError {
     #[error("Request Error")]
     Request(#[from] RequestError),
-    #[error("Telegram Error")]
-    Telegram(ApiError),
+    // #[error("Telegram Error")]
+    // Telegram(ApiError),
     #[error("Database Error")]
     Db(#[from] ejdb::Error),
 
     #[error("Die Format Error")]
     DieFormat(#[from] DieFormatError),
+
+    #[error("Parse Error")]
+    Parse(#[from] ParseError),
 
     #[error("Entry Format Error")]
     EntryFormat,
@@ -77,7 +86,7 @@ pub enum BotError {
 
 #[allow(deprecated)]
 pub async fn process_message(
-    cx: UpdateWithCx<AutoSend<Throttle<Bot>>, Message>,
+    cx: UpdateWithCx<RollBot, Message>,
     command: RollBotCommand,
 ) -> Result<(), BotError> {
     match command {
@@ -93,7 +102,7 @@ pub async fn process_message(
                     .await?
             }
         },
-        RollBotCommand::Roll(roll) => cx.answer(roll).parse_mode(ParseMode::Markdown).await?,
+        RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await?,
         RollBotCommand::Stats => cx.answer(stats()?).parse_mode(ParseMode::Markdown).await?,
         RollBotCommand::Query((collection, item)) => search_item(cx, collection, &item).await?,
     };
@@ -101,10 +110,43 @@ pub async fn process_message(
     Ok(())
 }
 
-async fn process_callback_query(
-    _cx: UpdateWithCx<AutoSend<Throttle<Bot>>, CallbackQuery>,
-) -> Result<(), BotError> {
-    Ok(())
+async fn process_callback_query(cx: UpdateWithCx<RollBot, CallbackQuery>) -> Result<(), BotError> {
+    if let (Some(data), Some(msg)) = (cx.update.data, cx.update.message) {
+        // let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
+        //     if sep_i < data.len() - 1 {
+        //         (&data[0..sep_i], &data[sep_i + 1..data.len()])
+        //     } else {
+        //         (data.as_ref(), "")
+        //     }
+        // } else {
+        //     (data.as_ref(), "")
+        // };
+
+        // Support for old buttons, remove after a while
+        let data = if data.starts_with('/') {
+            data
+        } else {
+            "/".to_string() + &data
+        };
+
+        let bot_name = cx
+            .requester
+            .get_me()
+            .await
+            .expect("Should always be successful")
+            .user
+            .first_name;
+        let cmd = RollBotCommand::parse(&data, bot_name)?;
+
+        let new_cx = UpdateWithCx {
+            requester: cx.requester.clone(),
+            update: msg,
+        };
+
+        process_message(new_cx, cmd).await
+    } else {
+        Ok(())
+    }
 }
 
 fn stats() -> Result<String, BotError> {
@@ -134,7 +176,7 @@ fn stats() -> Result<String, BotError> {
 
 #[allow(deprecated)]
 async fn search_item(
-    cx: UpdateWithCx<AutoSend<Throttle<Bot>>, Message>,
+    cx: UpdateWithCx<RollBot, Message>,
     lookup_item: &Collection,
     arg: &str,
 ) -> Result<Message, BotError> {
@@ -169,11 +211,7 @@ async fn search_item(
             }
             .ok_or(BotError::EntryFormat)?;
             replace_string_links(&mut msg, &mut keyboard);
-            cx.answer(&msg)
-                .parse_mode(ParseMode::Markdown)
-                .reply_markup(ReplyMarkup::InlineKeyboard(keyboard))
-                .await
-                .map_err(BotError::Request)
+            split_and_send(cx, &msg, Some(ReplyMarkup::InlineKeyboard(keyboard))).await
         }
         None => {
             let iter = lookup_item
@@ -185,7 +223,7 @@ async fn search_item(
                     let engine = cache.get(collection).unwrap();
                     let results = engine.search(arg);
                     results.into_iter().map(|item| {
-                        let command = format!("{} {}", lookup_item.get_default_command(), item);
+                        let command = format!("/{} {}", lookup_item.get_default_command(), item);
                         let button = InlineKeyboardButton::callback(item, command);
                         vec![button]
                     })
@@ -208,16 +246,17 @@ async fn search_item(
             };
 
             replace_string_links(&mut msg, &mut keyboard);
-            cx.answer(&msg)
-                .parse_mode(ParseMode::Markdown)
-                .reply_markup(ReplyMarkup::InlineKeyboard(keyboard))
-                .await
-                .map_err(BotError::Request)
+            split_and_send(cx, &msg, Some(ReplyMarkup::InlineKeyboard(keyboard))).await
+            // cx.answer(&msg)
+            //     .parse_mode(ParseMode::Markdown)
+            //     .reply_markup(ReplyMarkup::InlineKeyboard(keyboard))
+            // .await
+            // .map_err(BotError::Request)
         }
     }
 }
 
-pub fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
+fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
     let keys: Vec<String> = doc.keys().cloned().collect();
     for key in keys {
         let entry = doc.entry(key).or_insert(Bson::String("".to_string()));
@@ -303,4 +342,96 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
     });
 
     std::mem::swap(text, &mut result.into_owned());
+}
+
+// Splitting messages that are too long
+// Hope this will be moved into the tg lib someday
+
+#[allow(deprecated)]
+async fn split_and_send(
+    cx: UpdateWithCx<RollBot, Message>,
+    text: &str,
+    keyboard: Option<ReplyMarkup>,
+) -> Result<Message, BotError> {
+    if text.is_empty() {
+        return Err(BotError::EntryFormat);
+    }
+
+    let messages = split(text);
+    let (last, all) = messages.split_last().unwrap();
+
+    for text in all {
+        cx.answer(text).parse_mode(ParseMode::Markdown).await?;
+    }
+
+    let mut answer = cx.answer(last).parse_mode(ParseMode::Markdown);
+
+    if let Some(markup) = keyboard {
+        answer = answer.reply_markup(markup);
+    }
+
+    answer.await.map_err(BotError::Request)
+}
+
+fn split(text: &str) -> Vec<String> {
+    const MAX_TEXT_LEN: usize = 4096;
+    let mut result = Vec::new();
+
+    let bytes = text.as_bytes();
+
+    let mut start = 0;
+    let mut end;
+
+    while start < bytes.len() {
+        let hard_end = min(start + MAX_TEXT_LEN, bytes.len());
+        end = get_end(bytes, start, hard_end);
+
+        // We already know that it is a valid utf8
+        let s = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) };
+        result.push(s);
+        start = end + 1;
+    }
+
+    fix_tags(&result)
+}
+
+fn get_end(bytes: &[u8], start: usize, hard_end: usize) -> usize {
+    if hard_end == bytes.len() {
+        return hard_end;
+    }
+
+    for (i, byte) in bytes[start..hard_end].iter().enumerate().rev() {
+        let c = *byte as char;
+        if c == '\n' {
+            return start + i;
+        }
+    }
+    hard_end
+}
+
+fn fix_tags(split: &[&str]) -> Vec<String> {
+    const MARKUP_TAGS: [&str; 4] = ["```", "`", "*", "_"];
+
+    if split.len() == 1 {
+        return split.iter().map(|s| s.to_string()).collect();
+    }
+
+    let mut tag_to_fix: Option<&str> = None;
+    split
+        .iter()
+        .map(|s| {
+            let mut s = s.to_string();
+            if let Some(t) = tag_to_fix {
+                tag_to_fix = None;
+                s = t.to_string() + &s;
+            }
+            for t in MARKUP_TAGS.iter() {
+                if s.matches(t).count() % 2 != 0 {
+                    s.push_str(t);
+                    tag_to_fix = Some(t);
+                }
+            }
+            s
+        })
+        .collect::<Vec<_>>()
 }

@@ -37,7 +37,7 @@ impl BotCommand for RollBotCommand {
         crate::format::telegram::help_message()
     }
 
-    fn parse<N>(s: &str, bot_name: N) -> Result<Self, teloxide::utils::command::ParseError>
+    fn parse<N>(s: &str, bot_name: N) -> Result<Self, ParseError>
     where
         N: Into<String>,
     {

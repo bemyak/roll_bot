@@ -30,7 +30,7 @@ serde_json     = { version = "1.0.68", default-features = false }
 simplelog      = { version = "0.11.1", default-features = false }
 simsearch      = "0.2.3"
 # telegram-bot   = { git="https://github.com/telegram-rs/telegram-bot.git", branch="main", default-features=false, features=["rustls"] }
-teloxide       = { path="../teloxide", default-features = false, features = ["rustls", "auto-send", "cache-me", "throttle", "ctrlc_handler"] }
+teloxide       = { version = "0.5.3", default-features = false, features = ["rustls", "auto-send", "cache-me", "throttle", "ctrlc_handler"] }
 thiserror      = "1.0.30"
 tokio          = { version = "1.12.0", default-features = false, features = ["rt-multi-thread", "macros"] }
 tokio-stream   = { version = "0.1.8" }
