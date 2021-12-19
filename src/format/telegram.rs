@@ -9,7 +9,7 @@ pub fn chat_type_to_string(chat_type: &ChatKind) -> &'static str {
             teloxide::types::PublicChatKind::Group(_) => "group",
             teloxide::types::PublicChatKind::Supergroup(_) => "supergroup",
         },
-        ChatKind::Private(c) => "private",
+        ChatKind::Private(_) => "private",
         // MessageChat::Private(_) => "private",
         // MessageChat::Group(_) => "group",
         // MessageChat::Supergroup(_) => "supergroup",

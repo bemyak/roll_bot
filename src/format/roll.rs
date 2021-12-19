@@ -283,7 +283,7 @@ impl Expression {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub struct RollLine {
     pub expression: Expression,
     pub comment: Option<String>,
@@ -313,15 +313,6 @@ impl RollLine {
                     comment: Some(escaped_comment),
                 }
             }
-        }
-    }
-}
-
-impl Default for RollLine {
-    fn default() -> Self {
-        Self {
-            expression: Expression::default(),
-            comment: None,
         }
     }
 }

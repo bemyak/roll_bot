@@ -5,7 +5,7 @@ pub type CommandName = &'static str;
 pub type Url = &'static str;
 
 // Collection is a general searchable collection of items, such as list of monsters, spells, magical or mundane items.
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Collection {
     // List of commands that should be processes by this collection
     // Commands must be unique across all collections!

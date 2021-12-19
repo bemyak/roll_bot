@@ -7,6 +7,7 @@ extern crate lazy_static;
 extern crate prometheus;
 
 mod collection;
+mod commands;
 mod db;
 mod fetch;
 mod format;
@@ -20,6 +21,7 @@ use std::{
 };
 
 use serde_json::Value as JsonValue;
+
 #[allow(unused_imports)]
 use tokio::task;
 use tokio::time;
@@ -40,8 +42,13 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    run().await
+}
+
+async fn run() -> Result<(), Box<dyn Error>> {
     let log_config = simplelog::ConfigBuilder::new()
         .add_filter_allow_str("roll_bot")
+        .add_filter_allow_str("teloxide")
         .build();
     let log_level = if env::var("ROLL_BOT_USE_TEST_DB").is_ok() {
         simplelog::LevelFilter::Debug
@@ -63,11 +70,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    loop {
-        let bot = telegram::RollBot::new().await?;
-        bot.start().await;
-        error!("The bot has crashed! Restarting...");
-    }
+    telegram::start().await;
+
+    Ok(())
 }
 
 async fn fetch() -> Result<(), Box<dyn Error + Send + Sync>> {

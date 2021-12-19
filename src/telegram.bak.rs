@@ -1,0 +1,684 @@
+use std::{borrow::Cow, cmp::min, env, error::Error, mem, sync::Arc, time::Instant};
+
+use futures::{Stream, StreamExt};
+use hyper::Client;
+use hyper_proxy::{Intercept, Proxy, ProxyConnector};
+use hyper_rustls::HttpsConnector;
+use regex::{Captures, Regex};
+use teloxide::adaptors::throttle::Limits;
+use teloxide::adaptors::{AutoSend, Throttle};
+use teloxide::dispatching::update_listeners::{self, AsUpdateStream};
+use teloxide::requests::{Requester, RequesterExt};
+use teloxide::types::ChatKind::{self, Private, Public};
+use teloxide::types::{
+    CallbackQuery, ForceReply, InlineKeyboardMarkup, Message, MessageKind, ParseMode,
+    PublicChatKind, ReplyMarkup, Update, UpdateKind, User,
+};
+use teloxide::{ApiError, Bot};
+// use telegram_bot::{
+//     connector::{default_connector, hyper::HyperConnector, Connector},
+//     prelude::*,
+//     reply_markup,
+//     types::reply_markup::*,
+//     Api, CallbackQuery, GetMe, Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode,
+//     Update, UpdateKind, User,
+// };
+use thiserror::Error;
+use tokio::task;
+
+use crate::collection::{Collection, COMMANDS};
+use crate::format::{db::*, item::Item, monster::Monster, roll::*, spell::*, telegram::*};
+use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
+use crate::DB;
+use crate::PROJECT_URL;
+use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
+
+// lazy_static! {
+//     static ref INITIAL_MARKUP: ReplyKeyboardMarkup = reply_markup!(
+//         reply_keyboard,
+//         resize,
+//         ["/roll", "/monster"],
+//         ["/spell", "/item"]
+//     );
+// }
+
+#[derive(Error, Debug)]
+pub enum BotError {
+    #[error("Telegram Error")]
+    TelegramError(ApiError),
+    #[error("Database Error")]
+    DbError(#[from] ejdb::Error),
+
+    #[error("Die Format Error")]
+    DieFormatError(#[from] DieFormatError),
+
+    #[error("Entry Format Error")]
+    EntryFormatError,
+}
+
+pub struct RollBot {
+    api: Throttle<AutoSend<Bot>>,
+    // me: User,
+}
+
+impl Stream for RollBot {
+    type Item = Message;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        todo!()
+    }
+}
+
+impl RollBot {
+    pub async fn new() -> Result<Self, BotError> {
+        let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
+            error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
+            std::process::exit(1)
+        });
+
+        // let connector = get_connector();
+        // let api = Api::with_connector(token, connector);
+        let api = Bot::new(token).auto_send().throttle(Limits::default());
+        // let me = api.get_me().await?;
+
+        Ok(Self { api })
+    }
+
+    pub async fn start(self) {
+        info!("Started successfully");
+
+        teloxide::repl
+
+        // let mut stream = update_listeners::polling_default(self.api).await.as_stream();
+
+        // let s = Arc::new(self);
+
+        // loop {
+        //     let update = stream.next().await;
+
+        //     match update {
+        //         Some(Ok(update)) => {
+        //             let s = s.clone();
+        //             task::spawn(async move {
+        //                 s.process_update(update).await;
+        //             });
+        //         }
+        //         _ => {
+        //             error!("Can't fetch telegram updates: {:?}", update)
+        //         }
+        //     }
+        // }
+    }
+
+    async fn process_update(&self, update: Update) {
+        let result = match &update.kind {
+            UpdateKind::Message(msg) => self.process_message(msg).await,
+            UpdateKind::CallbackQuery(msg) => self.process_callback_query(msg).await,
+            _ => Ok(()),
+        };
+
+        if let Err(err) = result {
+            error!(
+                "Error occurred while processing message: {:?}, {:?}",
+                update, err
+            );
+        }
+    }
+
+    async fn process_callback_query(&self, callback_query: &CallbackQuery) -> Result<(), BotError> {
+        trace!(
+            "Got callback from @{}: {:?}",
+            callback_query
+                .from
+                .username
+                .as_ref()
+                .unwrap_or(&"unknown".to_string()),
+            callback_query.data
+        );
+        let callback_query = callback_query.clone();
+        if let (Some(data), Some(msg)) = (callback_query.data, callback_query.message) {
+            let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
+                if sep_i < data.len() - 1 {
+                    (&data[0..sep_i], &data[sep_i + 1..data.len()])
+                } else {
+                    (data.as_ref(), "")
+                }
+            } else {
+                (data.as_ref(), "")
+            };
+
+            self.execute_command(cmd, arg, &msg).await.map(|_| ())
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn process_message(&self, message: &Message) -> Result<(), BotError> {
+        // We don't want to speak to other bots
+        // if message.from().is_bot() {
+        //     info!("Message from bot received: {:?}", message.kind);
+        //     if !is_group(message) {
+        //         self.help(&message, "").await?;
+        //     }
+        //     return Ok(());
+        // }
+
+        let start_processing = Instant::now();
+
+        let entities = message.entities();
+        let data = message.text().unwrap_or_else(|| return Ok(()));
+
+        if let MessageKind::Common { data, entities } = &message.kind {
+            trace!(
+                "Got message from @{}: {}",
+                message
+                    .from()
+                    .map(User::full_name)
+                    .unwrap_or("unknown".to_string()),
+                data
+            );
+            // No command was specified, but maybe it is a response to the previous command
+            if entities.is_empty() {
+                if let Some(reply) = message.reply_to_message.clone().map(|reply| *reply) {
+                    if let MessageKind::Text {
+                        data: reply_data,
+                        entities: _,
+                    } = reply.kind
+                    {
+                        // reply_data contains our own message generated in `search_item` function, e.g.: "What item should I look for? ..."
+                        // The second word is our collection name
+                        let mut iter = reply_data.split_whitespace();
+                        let _ = iter.next();
+
+                        if let Some(collection) = iter.next() {
+                            self.execute_command(collection, data, &message).await?;
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
+            lazy_static! {
+                static ref CMD_REGEX: Regex =
+                    Regex::new(r"/(?P<cmd>\S+)(?:\s+(?P<arg>[^/]+))?").unwrap();
+            }
+            // Small trick to get type hints work for lazy static
+            let cmd_regex: &Regex = &*CMD_REGEX;
+
+            let cmds = cmd_regex
+                .captures_iter(data)
+                .map(|cap| {
+                    let cmd = cap.name("cmd").unwrap().as_str();
+                    let cmd = cmd.split('@').next().unwrap();
+                    let arg = cap.name("arg").map_or("", |m| m.as_str());
+                    (cmd, arg)
+                })
+                .collect::<Vec<_>>();
+
+            for (cmd, arg) in cmds {
+                let cmd = cmd.to_lowercase();
+                let cmd = cmd.as_str();
+                let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
+
+                let cmd_result = self.execute_command(&cmd, &arg, &message).await;
+
+                timer.observe_duration();
+
+                let user_id: i64 = message.from.id.into();
+                let chat_type = chat_type_to_string(&message.chat);
+                let request = message.text().unwrap_or_default();
+
+                MESSAGE_COUNTER.with_label_values(&[chat_type, cmd]).inc();
+
+                DB.log_message(
+                    user_id,
+                    chat_type,
+                    request,
+                    &cmd_result,
+                    Instant::now()
+                        .checked_duration_since(start_processing)
+                        .unwrap()
+                        .as_millis() as u64,
+                );
+
+                if let Err(err) = cmd_result {
+                    ERROR_COUNTER.with_label_values(&[cmd]).inc();
+                    error!("Error while processing message {}: {:#?}", data, err);
+                    self.report_error(message.clone(), cmd.to_owned(), data.clone(), err)
+                        .await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn execute_command(
+        &self,
+        cmd: &str,
+        arg: &str,
+        message: &Message,
+    ) -> Result<Option<String>, BotError> {
+        match cmd {
+            "help" | "h" | "about" | "start" => self.help(message, arg).await,
+            "roll" | "r" => self.roll(message, arg).await,
+            "stats" => self.stats(message).await,
+            _ => {
+                if let Some(item) = COMMANDS.get(cmd) {
+                    self.search_item(item, message, arg).await
+                } else {
+                    self.unknown(message, cmd).await
+                }
+            }
+        }
+    }
+
+    async fn report_error(
+        &self,
+        message: Message,
+        cmd: String,
+        data: String,
+        err: BotError,
+    ) -> Result<Option<String>, ApiError> {
+        let url = format!("{}/-/issues/new?issue[title]=Error while processing command {}&issue[description]={}\n{}", PROJECT_URL, cmd, data, err);
+        let msg = format!(
+            "Oops! An error occurred :(\nPlease, [submit a bug report]({})",
+            url
+        );
+        // TODO: Send email automatically to GitLab Service Desk
+        self.api
+            .send(
+                message
+                    .chat
+                    .text(msg)
+                    .parse_mode(ParseMode::Markdown)
+                    .disable_preview(),
+            )
+            .await?;
+        Ok(None)
+    }
+
+    async fn unknown(&self, message: &Message, cmd: &str) -> Result<Option<String>, BotError> {
+        if !is_group(message) {
+            self.api
+                .send(
+                    message
+                        .chat
+                        .text(format!("Err, I don't know `{}` command yet.", cmd))
+                        .parse_mode(ParseMode::Markdown),
+                )
+                .await?;
+        }
+        Ok(None)
+    }
+
+    async fn help(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
+        // TODO: restore kbd
+        // lazy_static! {
+        //     static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
+        //         ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://www.buymeacoffee.com/bemyak", "Chat with author" url "https://t.me/bemyak"]
+        //     );
+        // }
+
+        let mut request = match arg {
+            "roll" => message.chat.text(help_roll_message()),
+            _ => {
+                let mut msg = message.chat.text(help_message());
+                // msg.reply_markup(HELP_MARKUP.clone());
+                msg
+            }
+        };
+
+        self.api
+            .send(request.parse_mode(ParseMode::Markdown).disable_preview())
+            .await?;
+
+        Ok(None)
+    }
+
+    async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
+        let response = match roll_dice(arg) {
+            Ok(response) => response,
+            Err(err) => {
+                warn!("Failed to parse {}", arg);
+                err.to_string()
+            }
+        };
+        self.split_and_send(message, &response, None).await?;
+        Ok(Some(response))
+    }
+
+    async fn stats(&self, message: &Message) -> Result<Option<String>, BotError> {
+        let last_update = Instant::now()
+            .checked_duration_since(DB.get_update_timestamp())
+            .unwrap()
+            .as_secs();
+
+        let update_str = match last_update {
+            0..=60 => format!("{}s", last_update),
+            61..=3600 => format!("{}m", last_update / 60),
+            3601..=86400 => format!("{}h", last_update / 60 / 60),
+            86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
+        };
+
+        let collection_metadata = DB.get_metadata()?;
+        let messages = DB.get_all_massages()?;
+
+        let msg = format!(
+            "*Table stats*\n{}\n\n*Usage stats* (since last month / total)\n{}\n\nLast database update `{}` ago",
+            format_collection_metadata(collection_metadata),
+            format_message_stats(messages)?,
+            update_str,
+        );
+
+        self.api
+            .send(
+                message
+                    .chat
+                    .text(msg.clone())
+                    .parse_mode(ParseMode::Markdown),
+            )
+            .await?;
+        Ok(Some(msg))
+    }
+
+    async fn search_item(
+        &self,
+        lookup_item: &Collection,
+        message: &Message,
+        arg: &str,
+    ) -> Result<Option<String>, BotError> {
+        if arg.is_empty() {
+            let mut force_reply = ForceReply::new();
+            force_reply.selective(true);
+
+            self.api
+                .send(
+                    message
+                        .chat
+                        .text(format!(
+                            "What {} should I look for? Please, *reply* on this message with a name:",
+                            lookup_item.get_default_command()
+                        ))
+                        .parse_mode(ParseMode::Markdown)
+                        .reply_markup(force_reply),
+                )
+                .await?;
+
+            return Ok(None);
+        }
+
+        let exact_match_result = lookup_item
+            .collections
+            .iter()
+            .filter_map(|collection| DB.get_item(collection, arg).ok().flatten())
+            .next();
+
+        match exact_match_result {
+            Some(mut item) => {
+                let mut keyboard = InlineKeyboardMarkup::new([]);
+                replace_links(&mut item, &mut keyboard);
+                let mut msg = match lookup_item.type_ {
+                    crate::collection::CollectionType::Item => item.format_item(),
+                    crate::collection::CollectionType::Monster => item.format_monster(),
+                    crate::collection::CollectionType::Spell => item.format_spell(),
+                }
+                .ok_or(BotError::EntryFormatError)?;
+                replace_string_links(&mut msg, &mut keyboard);
+                self.split_and_send(
+                    message,
+                    &msg,
+                    Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
+                )
+                .await?;
+                Ok(Some(msg))
+            }
+            None => {
+                let mut keyboard = InlineKeyboardMarkup::new([]);
+                let mut found = false;
+
+                for collection in lookup_item.collections {
+                    let cache = DB.cache.read().unwrap();
+                    let engine = cache.get(collection).unwrap();
+                    let results = engine.search(arg);
+
+                    results.iter().for_each(|item| {
+                        let command = format!("{} {}", lookup_item.get_default_command(), item);
+                        let button = InlineKeyboardMarkup::callback(item.clone(), command);
+
+                        found = true;
+                        keyboard.add_row(vec![button]);
+                    });
+                }
+
+                let mut msg = if found {
+                    format!(
+                        "I don't have any {} with this exact name, but these looks similar:",
+                        lookup_item.get_default_command()
+                    )
+                } else {
+                    format!(
+                        "Can't find any {} with this name, sorry :(",
+                        lookup_item.get_default_command()
+                    )
+                };
+
+                replace_string_links(&mut msg, &mut keyboard);
+                self.split_and_send(
+                    message,
+                    &msg,
+                    Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
+                )
+                .await?;
+
+                Ok(Some(msg.to_owned()))
+            }
+        }
+    }
+
+    async fn split_and_send(
+        &self,
+        msg: &Message,
+        text: &str,
+        keyboard: Option<ReplyMarkup>,
+    ) -> Result<(), ApiError> {
+        if text.is_empty() {
+            return Ok(());
+        }
+
+        let messages = split(text);
+        let (last, all) = messages.split_last().unwrap();
+
+        for text in all {
+            self.api
+                .send(msg.chat.text(text).parse_mode(ParseMode::Markdown))
+                .await?;
+        }
+
+        let mut answer = msg.chat.text(last);
+
+        answer.parse_mode(ParseMode::Markdown);
+
+        if let Some(markup) = keyboard {
+            answer.reply_markup(markup);
+        }
+
+        self.api.send(answer).await?;
+        Ok(())
+    }
+}
+
+fn is_group(msg: &Message) -> bool {
+    matches!(msg.chat.kind, ChatKind::Public(_))
+}
+
+// pub fn get_connector() -> Box<dyn Connector> {
+//     env::var("roll_bot_http_proxy")
+//         .or_else(|_| env::var("ROLL_BOT_HTTP_PROXY"))
+//         .or_else(|_| env::var("http_proxy"))
+//         .or_else(|_| env::var("HTTP_PROXY"))
+//         .or_else(|_| env::var("https_proxy"))
+//         .or_else(|_| env::var("HTTPS_PROXY"))
+//         .map_err(Into::<Box<dyn Error>>::into)
+//         .and_then(|proxy_url| {
+//             info!("Running with proxy: {}", proxy_url);
+//             let connector = HttpsConnector::with_native_roots();
+//             let proxy = Proxy::new(Intercept::All, proxy_url.parse()?);
+//             let connector = ProxyConnector::from_proxy(connector, proxy)?;
+//             let connector: Box<dyn Connector> =
+//                 Box::new(HyperConnector::new(Client::builder().build(connector)));
+//             Ok(connector)
+//         })
+//         .unwrap_or_else(|_| default_connector())
+// }
+
+pub fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
+    let keys: Vec<String> = doc.keys().cloned().collect();
+    for key in keys {
+        let entry = doc.entry(key).or_insert(Bson::String("".to_string()));
+        replace_bson_links(entry, keyboard);
+    }
+}
+
+fn replace_bson_links(b: &mut Bson, keyboard: &mut InlineKeyboardMarkup) {
+    match b {
+        Bson::String(val) => {
+            replace_string_links(val, keyboard);
+        }
+        Bson::Array(arr) => {
+            for mut val in arr {
+                replace_bson_links(&mut val, keyboard);
+            }
+        }
+        Bson::Document(doc) => {
+            replace_links(doc, keyboard);
+        }
+        _ => {}
+    }
+}
+
+fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) {
+    lazy_static! {
+        static ref LINK_REGEX: Regex =
+            Regex::new(r"\{@(?P<cmd>\w+)(?:\s+(?P<arg1>.+?))?(?:\|(?P<arg2>.*?))?(?:\|(?P<arg3>.*?))?(?:\|(?P<arg4>.*?))?\}(?P<bonus>\d+)?")
+                .unwrap();
+    }
+
+    let text_copy = text.clone();
+
+    let result: Cow<str> = LINK_REGEX.replace_all(&text_copy, |caps: &Captures| {
+        let cmd = caps.name("cmd").unwrap().as_str();
+        let arg1 = caps
+            .name("arg1")
+            .map(|cap| cap.as_str())
+            .unwrap_or_default();
+        let arg2 = caps.name("arg2").map(|cap| cap.as_str());
+        let arg3 = caps.name("arg3").map(|cap| cap.as_str());
+        let arg4 = caps.name("arg4").map(|cap| cap.as_str());
+
+        let nice_str = arg4.or(arg3).or(arg2).unwrap_or(arg1);
+
+        match cmd {
+            "i" => format!("• {}", nice_str),
+            "hit" => format!("+{}", arg1),
+            "h" => match caps.name("bonus") {
+                Some(bonus) => format!("*{}*", bonus.as_str()),
+                None => "".to_owned(),
+            },
+            "atk" => "".to_owned(),
+            "scaledamage" => format!("*{}*", nice_str),
+            "dice" | "damage" => {
+                let roll_results = roll_results(arg1).unwrap();
+                let roll = roll_results.get(0).unwrap();
+                format!("*{}* `[{}]` ", arg1, roll.expression.calc())
+            }
+            "recharge" => {
+                if arg1.is_empty() {
+                    "(Recharge 6)".to_string()
+                } else {
+                    format!("(Recharge {}-6)", arg1)
+                }
+            }
+            _ => {
+                let nice_str = arg4.or(arg3).unwrap_or(arg1);
+                if let Some(item) = COMMANDS.get(cmd) {
+                    keyboard.add_row(vec![InlineKeyboardButton::callback(
+                        format!("{}: {}", item.get_default_command(), nice_str),
+                        format!("{} {}", item.get_default_command(), arg1),
+                    )]);
+                    format!("_{}_", nice_str)
+                } else {
+                    format!("_{}_", nice_str)
+                }
+            }
+        }
+    });
+
+    mem::swap(text, &mut result.into_owned());
+}
+
+fn split(text: &str) -> Vec<String> {
+    const MAX_TEXT_LEN: usize = 4096;
+    let mut result = Vec::new();
+
+    let bytes = text.as_bytes();
+
+    let mut start = 0;
+    let mut end;
+
+    while start < bytes.len() {
+        let hard_end = min(start + MAX_TEXT_LEN, bytes.len());
+        end = get_end(bytes, start, hard_end);
+
+        // We already know that it is a valid utf8
+        let s = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) };
+        result.push(s);
+        start = end + 1;
+    }
+
+    fix_tags(&result)
+}
+
+fn get_end(bytes: &[u8], start: usize, hard_end: usize) -> usize {
+    if hard_end == bytes.len() {
+        return hard_end;
+    }
+
+    for (i, byte) in bytes[start..hard_end].iter().enumerate().rev() {
+        let c = *byte as char;
+        if c == '\n' {
+            return start + i;
+        }
+    }
+    hard_end
+}
+
+fn fix_tags(split: &[&str]) -> Vec<String> {
+    const MARKUP_TAGS: [&str; 4] = ["```", "`", "*", "_"];
+
+    if split.len() == 1 {
+        return split.iter().map(|s| s.to_string()).collect();
+    }
+
+    let mut tag_to_fix: Option<&str> = None;
+    split
+        .iter()
+        .map(|s| {
+            let mut s = s.to_string();
+            if let Some(t) = tag_to_fix {
+                tag_to_fix = None;
+                s = t.to_string() + &s;
+            }
+            for t in MARKUP_TAGS.iter() {
+                if s.matches(t).count() % 2 != 0 {
+                    s.push_str(t);
+                    tag_to_fix = Some(t);
+                }
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+}
