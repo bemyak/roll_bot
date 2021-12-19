@@ -8,7 +8,7 @@ use teloxide::{
     adaptors::{throttle::Limits, CacheMe, Throttle},
     payloads::SendMessageSetters,
     prelude::*,
-    types::{ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup},
+    types::{ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup, User},
     utils::command::{BotCommand, ParseError},
     RequestError,
 };
@@ -89,39 +89,57 @@ pub async fn process_message(
     cx: UpdateWithCx<RollBot, Message>,
     command: RollBotCommand,
 ) -> Result<(), BotError> {
+    trace!(
+        "Got message from @{}: {}",
+        cx.update
+            .from()
+            .map(User::full_name)
+            .unwrap_or_else(|| "unknown".to_string()),
+        cx.update.text().unwrap_or_default()
+    );
     match command {
         RollBotCommand::Help(opts) => match opts {
             HelpOptions::None => {
                 cx.answer(format::telegram::help_message())
                     .parse_mode(ParseMode::Markdown)
-                    .await?
+                    .await
+                    .log_on_error()
+                    .await
             }
             HelpOptions::Roll => {
                 cx.answer(format::telegram::help_roll_message())
                     .parse_mode(ParseMode::Markdown)
-                    .await?
+                    .await
+                    .log_on_error()
+                    .await
             }
         },
-        RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await?,
-        RollBotCommand::Stats => cx.answer(stats()?).parse_mode(ParseMode::Markdown).await?,
-        RollBotCommand::Query((collection, item)) => search_item(cx, collection, &item).await?,
+        RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await.log_on_error().await,
+        RollBotCommand::Stats => {
+            cx.answer(stats()?)
+                .parse_mode(ParseMode::Markdown)
+                .await
+                .log_on_error()
+                .await
+        }
+        RollBotCommand::Query((collection, item)) => {
+            search_item(cx, collection, &item)
+                .await
+                .log_on_error()
+                .await
+        }
     };
 
     Ok(())
 }
 
 async fn process_callback_query(cx: UpdateWithCx<RollBot, CallbackQuery>) -> Result<(), BotError> {
+    trace!(
+        "Got callback from @{}: {:?}",
+        cx.update.from.first_name,
+        cx.update.data
+    );
     if let (Some(data), Some(msg)) = (cx.update.data, cx.update.message) {
-        // let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
-        //     if sep_i < data.len() - 1 {
-        //         (&data[0..sep_i], &data[sep_i + 1..data.len()])
-        //     } else {
-        //         (data.as_ref(), "")
-        //     }
-        // } else {
-        //     (data.as_ref(), "")
-        // };
-
         // Support for old buttons, remove after a while
         let data = if data.starts_with('/') {
             data
