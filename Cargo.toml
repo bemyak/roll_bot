@@ -15,27 +15,28 @@ ejdb           = "0.4.1"
 futures        = { version = "0.3.17", default-features = false }
 hyper          = { version = "0.14.14", default-features = false, features = ["server"] }
 hyper-proxy    = { version = "0.9.1", default-features = false, features = ["rustls"] }
-hyper-rustls   = "0.22.1"
+hyper-rustls   = "0.23.0"
 lazy_static    = "1.4.0"
 log            = { version = "0.4.14", default-features = false }
 ordinal        = "0.2.3"
 peg            = "0.7.0"
 percent-encoding = "2.1.0"
 prometheus     = { version = "0.13.0", default-features = false, features = ["process"] }
-rand           = { version = "0.8.4", default-features = false }
-regex          = "1.5.4"
+rand           = { version = "0.8.4" }
+regex          = { version = "1.5.4" }
 reqwest        = { version = "0.11.6", default-features = false, features = ["json", "rustls-tls"] }
 serde          = "1.0.130"
 serde_json     = { version = "1.0.68", default-features = false }
-simplelog      = { version = "0.10.2", default-features = false }
+simplelog      = { version = "0.11.1", default-features = false }
 simsearch      = "0.2.3"
-telegram-bot   = { git="https://github.com/telegram-rs/telegram-bot.git", branch="main", default-features=false, features=["rustls"] }
+teloxide       = { version = "0.5.3", default-features = false, features = ["rustls", "auto-send", "cache-me", "throttle", "ctrlc_handler"] }
 thiserror      = "1.0.30"
 tokio          = { version = "1.12.0", default-features = false, features = ["rt-multi-thread", "macros"] }
+tokio-stream   = { version = "0.1.8" }
 zalgo          = "0.2.0"
 
 [dev-dependencies]
-simplelog  = { version = "0.10.2", default-features = false, features = ["test"] }
+simplelog  = { version = "0.11.1", default-features = false, features = ["test"] }
 tokio-test = "0.4.2"
 
 [build-dependencies]

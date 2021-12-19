@@ -1,517 +1,280 @@
-use std::{borrow::Cow, cmp::min, env, error::Error, mem, sync::Arc, time::Instant};
+use std::{borrow::Cow, cmp::min, env, time::Instant};
 
-use futures::StreamExt;
-use hyper::Client;
-use hyper_proxy::{Intercept, Proxy, ProxyConnector};
-use hyper_rustls::HttpsConnector;
-use regex::{Captures, Regex};
-use telegram_bot::{
-    connector::{default_connector, hyper::HyperConnector, Connector},
-    prelude::*,
-    reply_markup,
-    types::reply_markup::*,
-    Api, CallbackQuery, GetMe, Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode,
-    Update, UpdateKind, User,
-};
-use thiserror::Error;
-use tokio::task;
-
-use crate::collection::{Collection, COMMANDS};
-use crate::format::{db::*, item::Item, monster::Monster, roll::*, spell::*, telegram::*};
-use crate::metrics::{ERROR_COUNTER, MESSAGE_COUNTER, REQUEST_HISTOGRAM};
-use crate::DB;
-use crate::PROJECT_URL;
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
+use regex::{Captures, Regex};
+use thiserror::Error;
 
-lazy_static! {
-    static ref INITIAL_MARKUP: ReplyKeyboardMarkup = reply_markup!(
-        reply_keyboard,
-        resize,
-        ["/roll", "/monster"],
-        ["/spell", "/item"]
-    );
+use teloxide::{
+    adaptors::{throttle::Limits, CacheMe, Throttle},
+    payloads::SendMessageSetters,
+    prelude::*,
+    types::{ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup, User},
+    utils::command::{BotCommand, ParseError},
+    RequestError,
+};
+use tokio_stream::wrappers::UnboundedReceiverStream;
+
+use crate::{
+    collection::{Collection, COMMANDS},
+    commands::{HelpOptions, RollBotCommand},
+    format::{
+        self,
+        db::{format_collection_metadata, format_message_stats},
+        item::Item,
+        monster::Monster,
+        roll::{roll_results, DieFormatError},
+        spell::Spell,
+    },
+    DB,
+};
+
+type RollBot = AutoSend<Throttle<CacheMe<Bot>>>;
+
+pub async fn start() {
+    let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
+        error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
+        std::process::exit(1)
+    });
+
+    let bot = Bot::new(token)
+        .cache_me()
+        .throttle(Limits::default())
+        .auto_send();
+    let bot_name = bot
+        .get_me()
+        .await
+        .expect("Should always be successful")
+        .user
+        .first_name;
+
+    Dispatcher::new(bot)
+        .messages_handler(|rx: DispatcherHandlerRx<_, Message>| {
+            UnboundedReceiverStream::new(rx)
+                .commands(bot_name)
+                .for_each_concurrent(None, |(cx, cmd)| async {
+                    process_message(cx, cmd).await.log_on_error().await;
+                })
+        })
+        .callback_queries_handler(|rx: DispatcherHandlerRx<_, CallbackQuery>| {
+            UnboundedReceiverStream::new(rx).for_each_concurrent(None, |message| async {
+                process_callback_query(message).await.log_on_error().await;
+            })
+        })
+        .setup_ctrlc_handler()
+        .dispatch()
+        .await;
 }
 
 #[derive(Error, Debug)]
 pub enum BotError {
-    #[error("Telegram Error")]
-    Telegram(#[from] telegram_bot::Error),
-
+    #[error("Request Error")]
+    Request(#[from] RequestError),
+    // #[error("Telegram Error")]
+    // Telegram(ApiError),
     #[error("Database Error")]
     Db(#[from] ejdb::Error),
 
     #[error("Die Format Error")]
     DieFormat(#[from] DieFormatError),
 
+    #[error("Parse Error")]
+    Parse(#[from] ParseError),
+
     #[error("Entry Format Error")]
     EntryFormat,
 }
 
-pub struct Bot {
-    api: Api,
-    me: User,
+#[allow(deprecated)]
+pub async fn process_message(
+    cx: UpdateWithCx<RollBot, Message>,
+    command: RollBotCommand,
+) -> Result<(), BotError> {
+    trace!(
+        "Got message from @{}: {}",
+        cx.update
+            .from()
+            .map(User::full_name)
+            .unwrap_or_else(|| "unknown".to_string()),
+        cx.update.text().unwrap_or_default()
+    );
+    match command {
+        RollBotCommand::Help(opts) => match opts {
+            HelpOptions::None => {
+                cx.answer(format::telegram::help_message())
+                    .parse_mode(ParseMode::Markdown)
+                    .await
+                    .log_on_error()
+                    .await
+            }
+            HelpOptions::Roll => {
+                cx.answer(format::telegram::help_roll_message())
+                    .parse_mode(ParseMode::Markdown)
+                    .await
+                    .log_on_error()
+                    .await
+            }
+        },
+        RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await.log_on_error().await,
+        RollBotCommand::Stats => {
+            cx.answer(stats()?)
+                .parse_mode(ParseMode::Markdown)
+                .await
+                .log_on_error()
+                .await
+        }
+        RollBotCommand::Query((collection, item)) => {
+            search_item(cx, collection, &item)
+                .await
+                .log_on_error()
+                .await
+        }
+    };
+
+    Ok(())
 }
 
-impl Bot {
-    pub async fn new() -> Result<Self, BotError> {
-        let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
-            error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
-            std::process::exit(1)
-        });
-
-        let connector = get_connector();
-        let api = Api::with_connector(token, connector);
-        let me = api.send(GetMe).await?;
-
-        Ok(Self { api, me })
-    }
-
-    pub async fn start(self) {
-        info!("Started successfully");
-        let mut stream = self.api.stream();
-
-        let s = Arc::new(self);
-
-        loop {
-            let update = stream.next().await;
-
-            match update {
-                Some(Ok(update)) => {
-                    let s = s.clone();
-                    task::spawn(async move {
-                        s.process_update(update).await;
-                    });
-                }
-                _ => {
-                    error!("Can't fetch telegram updates: {:?}", update)
-                }
-            }
-        }
-    }
-
-    async fn process_update(&self, update: Update) {
-        let result = match &update.kind {
-            UpdateKind::Message(msg) => self.process_message(msg).await,
-            UpdateKind::CallbackQuery(msg) => self.process_callback_query(msg).await,
-            _ => Ok(()),
+async fn process_callback_query(cx: UpdateWithCx<RollBot, CallbackQuery>) -> Result<(), BotError> {
+    trace!(
+        "Got callback from @{}: {:?}",
+        cx.update.from.first_name,
+        cx.update.data
+    );
+    if let (Some(data), Some(msg)) = (cx.update.data, cx.update.message) {
+        // Support for old buttons, remove after a while
+        let data = if data.starts_with('/') {
+            data
+        } else {
+            "/".to_string() + &data
         };
 
-        if let Err(err) = result {
-            error!(
-                "Error occurred while processing message: {:?}, {:?}",
-                update, err
-            );
-        }
-    }
+        let bot_name = cx
+            .requester
+            .get_me()
+            .await
+            .expect("Should always be successful")
+            .user
+            .first_name;
+        let cmd = RollBotCommand::parse(&data, bot_name)?;
 
-    async fn process_callback_query(&self, callback_query: &CallbackQuery) -> Result<(), BotError> {
-        trace!(
-            "Got callback from @{}: {:?}",
-            callback_query
-                .from
-                .username
-                .as_ref()
-                .unwrap_or(&"unknown".to_string()),
-            callback_query.data
-        );
-        let callback_query = callback_query.clone();
-        if let (Some(data), Some(MessageOrChannelPost::Message(msg))) =
-            (callback_query.data, callback_query.message)
-        {
-            let (cmd, arg) = if let Some(sep_i) = data.find(' ') {
-                if sep_i < data.len() - 1 {
-                    (&data[0..sep_i], &data[sep_i + 1..data.len()])
-                } else {
-                    (data.as_ref(), "")
-                }
-            } else {
-                (data.as_ref(), "")
-            };
+        let new_cx = UpdateWithCx {
+            requester: cx.requester.clone(),
+            update: msg,
+        };
 
-            self.execute_command(cmd, arg, &msg).await.map(|_| ())
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn process_message(&self, message: &Message) -> Result<(), BotError> {
-        // We don't want to speak to other bots
-        if message.from.is_bot {
-            info!("Message from bot received: {:?}", message.kind);
-            if !is_group(message) {
-                self.help(message, "").await?;
-            }
-            return Ok(());
-        }
-
-        let start_processing = Instant::now();
-        if let MessageKind::Text { data, entities } = &message.kind {
-            trace!(
-                "Got message from @{}: {}",
-                message
-                    .from
-                    .username
-                    .as_ref()
-                    .unwrap_or(&"unknown".to_string()),
-                data
-            );
-            // No command was specified, but maybe it is a response to the previous command
-            if entities.is_empty() {
-                if let Some(MessageOrChannelPost::Message(reply)) =
-                    message.reply_to_message.clone().map(|reply| *reply)
-                {
-                    if let MessageKind::Text {
-                        data: reply_data,
-                        entities: _,
-                    } = reply.kind
-                    {
-                        // reply_data contains our own message generated in `search_item` function, e.g.: "What item should I look for? ..."
-                        // The second word is our collection name
-                        let mut iter = reply_data.split_whitespace();
-                        let _ = iter.next();
-
-                        if let Some(collection) = iter.next() {
-                            self.execute_command(collection, data, message).await?;
-                        }
-                    }
-                }
-                return Ok(());
-            }
-
-            lazy_static! {
-                static ref CMD_REGEX: Regex =
-                    Regex::new(r"/(?P<cmd>\S+)(?:\s+(?P<arg>[^/]+))?").unwrap();
-            }
-            // Small trick to get type hints work for lazy static
-            let cmd_regex: &Regex = &*CMD_REGEX;
-
-            let cmds = cmd_regex
-                .captures_iter(data)
-                .map(|cap| {
-                    let cmd = cap.name("cmd").unwrap().as_str();
-                    let cmd = cmd.split('@').next().unwrap();
-                    let arg = cap.name("arg").map_or("", |m| m.as_str());
-                    (cmd, arg)
-                })
-                .collect::<Vec<_>>();
-
-            for (cmd, arg) in cmds {
-                let cmd = cmd.to_lowercase();
-                let cmd = cmd.as_str();
-                let timer = REQUEST_HISTOGRAM.with_label_values(&[cmd]).start_timer();
-
-                let cmd_result = self.execute_command(cmd, arg, message).await;
-
-                timer.observe_duration();
-
-                let user_id: i64 = message.from.id.into();
-                let chat_type = chat_type_to_string(&message.chat);
-                let request = message.text().unwrap_or_default();
-
-                MESSAGE_COUNTER.with_label_values(&[chat_type, cmd]).inc();
-
-                DB.log_message(
-                    user_id,
-                    chat_type,
-                    request,
-                    &cmd_result,
-                    Instant::now()
-                        .checked_duration_since(start_processing)
-                        .unwrap()
-                        .as_millis() as u64,
-                );
-
-                if let Err(err) = cmd_result {
-                    ERROR_COUNTER.with_label_values(&[cmd]).inc();
-                    error!("Error while processing message {}: {:#?}", data, err);
-                    self.report_error(message.clone(), cmd.to_owned(), data.clone(), err)
-                        .await?;
-                }
-            }
-        }
-
+        process_message(new_cx, cmd).await
+    } else {
         Ok(())
     }
+}
 
-    async fn execute_command(
-        &self,
-        cmd: &str,
-        arg: &str,
-        message: &Message,
-    ) -> Result<Option<String>, BotError> {
-        match cmd {
-            "help" | "h" | "about" | "start" => self.help(message, arg).await,
-            "roll" | "r" => self.roll(message, arg).await,
-            "stats" => self.stats(message).await,
-            _ => {
-                if let Some(item) = COMMANDS.get(cmd) {
-                    self.search_item(item, message, arg).await
-                } else {
-                    self.unknown(message, cmd).await
-                }
+fn stats() -> Result<String, BotError> {
+    let last_update = Instant::now()
+        .checked_duration_since(DB.get_update_timestamp())
+        .unwrap()
+        .as_secs();
+
+    let update_str = match last_update {
+        0..=60 => format!("{}s", last_update),
+        61..=3600 => format!("{}m", last_update / 60),
+        3601..=86400 => format!("{}h", last_update / 60 / 60),
+        86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
+    };
+
+    let collection_metadata = DB.get_metadata()?;
+    let messages = DB.get_all_massages()?;
+
+    let msg = format!(
+        "*Table stats*\n{}\n\n*Usage stats* (since last month / total)\n{}\n\nLast database update `{}` ago",
+        format_collection_metadata(collection_metadata),
+        format_message_stats(messages)?,
+        update_str,
+    );
+    Ok(msg)
+}
+
+#[allow(deprecated)]
+async fn search_item(
+    cx: UpdateWithCx<RollBot, Message>,
+    lookup_item: &Collection,
+    arg: &str,
+) -> Result<Message, BotError> {
+    if arg.is_empty() {
+        let force_reply = ForceReply::new().selective(true);
+
+        return cx
+            .answer(format!(
+                "What {} should I look for? Please, *reply* on this message with a name:",
+                lookup_item.get_default_command()
+            ))
+            .parse_mode(ParseMode::Markdown)
+            .reply_markup(force_reply)
+            .await
+            .map_err(BotError::Request);
+    }
+
+    let exact_match_result = lookup_item
+        .collections
+        .iter()
+        .filter_map(|collection| DB.get_item(collection, arg).ok().flatten())
+        .next();
+
+    match exact_match_result {
+        Some(mut item) => {
+            let mut keyboard = InlineKeyboardMarkup::default();
+            replace_links(&mut item, &mut keyboard);
+            let mut msg = match lookup_item.type_ {
+                crate::collection::CollectionType::Item => item.format_item(),
+                crate::collection::CollectionType::Monster => item.format_monster(),
+                crate::collection::CollectionType::Spell => item.format_spell(),
             }
+            .ok_or(BotError::EntryFormat)?;
+            replace_string_links(&mut msg, &mut keyboard);
+            split_and_send(cx, &msg, Some(ReplyMarkup::InlineKeyboard(keyboard))).await
         }
-    }
-
-    async fn report_error(
-        &self,
-        message: Message,
-        cmd: String,
-        data: String,
-        err: BotError,
-    ) -> Result<Option<String>, telegram_bot::Error> {
-        let url = format!("{}/-/issues/new?issue[title]=Error while processing command {}&issue[description]={}\n{}", PROJECT_URL, cmd, data, err);
-        let msg = format!(
-            "Oops! An error occurred :(\nPlease, [submit a bug report]({})",
-            url
-        );
-        // TODO: Send email automatically to GitLab Service Desk
-        self.api
-            .send(
-                message
-                    .chat
-                    .text(msg)
-                    .parse_mode(ParseMode::Markdown)
-                    .disable_preview(),
-            )
-            .await?;
-        Ok(None)
-    }
-
-    async fn unknown(&self, message: &Message, cmd: &str) -> Result<Option<String>, BotError> {
-        if !is_group(message) {
-            self.api
-                .send(
-                    message
-                        .chat
-                        .text(format!("Err, I don't know `{}` command yet.", cmd))
-                        .parse_mode(ParseMode::Markdown),
-                )
-                .await?;
-        }
-        Ok(None)
-    }
-
-    async fn help(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
-        lazy_static! {
-            static ref HELP_MARKUP: InlineKeyboardMarkup = reply_markup!(inline_keyboard,
-                ["Source Code" url PROJECT_URL, "Buy me a coffee" url "https://www.buymeacoffee.com/bemyak", "Chat with author" url "https://t.me/bemyak"]
-            );
-        }
-
-        let mut request = match arg {
-            "roll" => message.chat.text(help_roll_message()),
-            _ => {
-                let mut msg = message.chat.text(help_message());
-                msg.reply_markup(HELP_MARKUP.clone());
-                msg
-            }
-        };
-
-        self.api
-            .send(request.parse_mode(ParseMode::Markdown).disable_preview())
-            .await?;
-
-        Ok(None)
-    }
-
-    async fn roll(&self, message: &Message, arg: &str) -> Result<Option<String>, BotError> {
-        let response = match roll_dice(arg) {
-            Ok(response) => response,
-            Err(err) => {
-                warn!("Failed to parse {}", arg);
-                err.to_string()
-            }
-        };
-        self.split_and_send(message, &response, None).await?;
-        Ok(Some(response))
-    }
-
-    async fn stats(&self, message: &Message) -> Result<Option<String>, BotError> {
-        let last_update = Instant::now()
-            .checked_duration_since(DB.get_update_timestamp())
-            .unwrap()
-            .as_secs();
-
-        let update_str = match last_update {
-            0..=60 => format!("{}s", last_update),
-            61..=3600 => format!("{}m", last_update / 60),
-            3601..=86400 => format!("{}h", last_update / 60 / 60),
-            86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
-        };
-
-        let collection_metadata = DB.get_metadata()?;
-        let messages = DB.get_all_massages()?;
-
-        let msg = format!(
-            "*Table stats*\n{}\n\n*Usage stats* (since last month / total)\n{}\n\nLast database update `{}` ago",
-            format_collection_metadata(collection_metadata),
-            format_message_stats(messages)?,
-            update_str,
-        );
-
-        self.api
-            .send(
-                message
-                    .chat
-                    .text(msg.clone())
-                    .parse_mode(ParseMode::Markdown),
-            )
-            .await?;
-        Ok(Some(msg))
-    }
-
-    async fn search_item(
-        &self,
-        lookup_item: &Collection,
-        message: &Message,
-        arg: &str,
-    ) -> Result<Option<String>, BotError> {
-        if arg.is_empty() {
-            let mut force_reply = ForceReply::new();
-            force_reply.selective();
-
-            self.api
-                .send(
-                    message
-                        .chat
-                        .text(format!(
-                            "What {} should I look for? Please, *reply* to this message with a name:",
-                            lookup_item.get_default_command()
-                        ))
-                        .parse_mode(ParseMode::Markdown)
-                        .reply_markup(force_reply),
-                )
-                .await?;
-
-            return Ok(None);
-        }
-
-        let exact_match_result = lookup_item
-            .collections
-            .iter()
-            .filter_map(|collection| DB.get_item(collection, arg).ok().flatten())
-            .next();
-
-        match exact_match_result {
-            Some(mut item) => {
-                let mut keyboard = InlineKeyboardMarkup::new();
-                replace_links(&mut item, &mut keyboard);
-                let mut msg = match lookup_item.type_ {
-                    crate::collection::CollectionType::Item => item.format_item(),
-                    crate::collection::CollectionType::Monster => item.format_monster(),
-                    crate::collection::CollectionType::Spell => item.format_spell(),
-                }
-                .ok_or(BotError::EntryFormat)?;
-                replace_string_links(&mut msg, &mut keyboard);
-                self.split_and_send(
-                    message,
-                    &msg,
-                    Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
-                )
-                .await?;
-                Ok(Some(msg))
-            }
-            None => {
-                let mut keyboard = InlineKeyboardMarkup::new();
-                let mut found = false;
-
-                for collection in lookup_item.collections {
+        None => {
+            let iter = lookup_item
+                .collections
+                .iter()
+                .cloned()
+                .map(|collection| {
                     let cache = DB.cache.read().unwrap();
                     let engine = cache.get(collection).unwrap();
                     let results = engine.search(arg);
+                    results.into_iter().map(|item| {
+                        let command = format!("/{} {}", lookup_item.get_default_command(), item);
+                        let button = InlineKeyboardButton::callback(item, command);
+                        vec![button]
+                    })
+                })
+                .flatten()
+                .collect::<Vec<_>>();
 
-                    results.iter().for_each(|item| {
-                        let command = format!("{} {}", lookup_item.get_default_command(), item);
-                        let button = InlineKeyboardButton::callback(item.clone(), command);
+            let mut keyboard = InlineKeyboardMarkup::new(iter);
 
-                        found = true;
-                        keyboard.add_row(vec![button]);
-                    });
-                }
-
-                let mut msg = if found {
-                    format!(
-                        "I don't have any {} with this exact name, but these look similar:",
-                        lookup_item.get_default_command()
-                    )
-                } else {
-                    format!(
-                        "Can't find any {} with this name, sorry :(",
-                        lookup_item.get_default_command()
-                    )
-                };
-
-                replace_string_links(&mut msg, &mut keyboard);
-                self.split_and_send(
-                    message,
-                    &msg,
-                    Some(ReplyMarkup::InlineKeyboardMarkup(keyboard)),
+            let mut msg = if keyboard.inline_keyboard.is_empty() {
+                format!(
+                    "Can't find any {} with this name, sorry :(",
+                    lookup_item.get_default_command()
                 )
-                .await?;
+            } else {
+                format!(
+                    "I don't have any {} with this exact name, but these looks similar:",
+                    lookup_item.get_default_command()
+                )
+            };
 
-                Ok(Some(msg.to_owned()))
-            }
+            replace_string_links(&mut msg, &mut keyboard);
+            split_and_send(cx, &msg, Some(ReplyMarkup::InlineKeyboard(keyboard))).await
+            // cx.answer(&msg)
+            //     .parse_mode(ParseMode::Markdown)
+            //     .reply_markup(ReplyMarkup::InlineKeyboard(keyboard))
+            // .await
+            // .map_err(BotError::Request)
         }
     }
-
-    async fn split_and_send(
-        &self,
-        msg: &Message,
-        text: &str,
-        keyboard: Option<ReplyMarkup>,
-    ) -> Result<(), telegram_bot::Error> {
-        if text.is_empty() {
-            return Ok(());
-        }
-
-        let messages = split(text);
-        let (last, all) = messages.split_last().unwrap();
-
-        for text in all {
-            self.api
-                .send(msg.chat.text(text).parse_mode(ParseMode::Markdown))
-                .await?;
-        }
-
-        let mut answer = msg.chat.text(last);
-
-        answer.parse_mode(ParseMode::Markdown);
-
-        if let Some(markup) = keyboard {
-            answer.reply_markup(markup);
-        }
-
-        self.api.send(answer).await?;
-        Ok(())
-    }
 }
 
-fn is_group(msg: &Message) -> bool {
-    matches!(msg.chat, MessageChat::Group(_)) || matches!(msg.chat, MessageChat::Supergroup(_))
-}
-
-pub fn get_connector() -> Box<dyn Connector> {
-    env::var("roll_bot_http_proxy")
-        .or_else(|_| env::var("ROLL_BOT_HTTP_PROXY"))
-        .or_else(|_| env::var("http_proxy"))
-        .or_else(|_| env::var("HTTP_PROXY"))
-        .or_else(|_| env::var("https_proxy"))
-        .or_else(|_| env::var("HTTPS_PROXY"))
-        .map_err(Into::<Box<dyn Error>>::into)
-        .and_then(|proxy_url| {
-            info!("Running with proxy: {}", proxy_url);
-            let connector = HttpsConnector::with_native_roots();
-            let proxy = Proxy::new(Intercept::All, proxy_url.parse()?);
-            let connector = ProxyConnector::from_proxy(connector, proxy)?;
-            let connector: Box<dyn Connector> =
-                Box::new(HyperConnector::new(Client::builder().build(connector)));
-            Ok(connector)
-        })
-        .unwrap_or_else(|_| default_connector())
-}
-
-pub fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
+fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
     let keys: Vec<String> = doc.keys().cloned().collect();
     for key in keys {
         let entry = doc.entry(key).or_insert(Bson::String("".to_string()));
@@ -525,8 +288,8 @@ fn replace_bson_links(b: &mut Bson, keyboard: &mut InlineKeyboardMarkup) {
             replace_string_links(val, keyboard);
         }
         Bson::Array(arr) => {
-            for mut val in arr {
-                replace_bson_links(&mut val, keyboard);
+            for val in arr {
+                replace_bson_links(val, keyboard);
             }
         }
         Bson::Document(doc) => {
@@ -581,17 +344,48 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
             _ => {
                 let nice_str = arg4.or(arg3).unwrap_or(arg1);
                 if let Some(item) = COMMANDS.get(cmd) {
-                    keyboard.add_row(vec![InlineKeyboardButton::callback(
+                    let mut kb = keyboard.clone();
+                    kb = kb.append_row(vec![InlineKeyboardButton::callback(
                         format!("{}: {}", item.get_default_command(), nice_str),
                         format!("{} {}", item.get_default_command(), arg1),
                     )]);
+                    *keyboard = kb;
                 }
                 format!("_{}_", nice_str)
             }
         }
     });
 
-    mem::swap(text, &mut result.into_owned());
+    std::mem::swap(text, &mut result.into_owned());
+}
+
+// Splitting messages that are too long
+// Hope this will be moved into the tg lib someday
+
+#[allow(deprecated)]
+async fn split_and_send(
+    cx: UpdateWithCx<RollBot, Message>,
+    text: &str,
+    keyboard: Option<ReplyMarkup>,
+) -> Result<Message, BotError> {
+    if text.is_empty() {
+        return Err(BotError::EntryFormat);
+    }
+
+    let messages = split(text);
+    let (last, all) = messages.split_last().unwrap();
+
+    for text in all {
+        cx.answer(text).parse_mode(ParseMode::Markdown).await?;
+    }
+
+    let mut answer = cx.answer(last).parse_mode(ParseMode::Markdown);
+
+    if let Some(markup) = keyboard {
+        answer = answer.reply_markup(markup);
+    }
+
+    answer.await.map_err(BotError::Request)
 }
 
 fn split(text: &str) -> Vec<String> {

@@ -91,7 +91,7 @@ impl Entry for Document {
                 let s = match v {
                     Bson::Array(arr) => arr
                         .iter()
-                        .map(|bs| simple_format(bs))
+                        .map(simple_format)
                         .collect::<Vec<String>>()
                         .join("\n\n"),
                     _ => simple_format(v),
@@ -130,7 +130,7 @@ pub trait EntryArrayUtils<T: ?Sized> {
 impl<T: ?Sized> EntryArrayUtils<T> for Document {
     fn get_array_of(&self, key: &str, f: fn(&Bson) -> Option<&T>) -> Option<Vec<&T>> {
         let arr = self.get_array(key).ok()?;
-        let result = arr.iter().filter_map(|bs| f(bs)).collect::<Vec<_>>();
+        let result = arr.iter().filter_map(f).collect::<Vec<_>>();
         result.into_option()
     }
 }
@@ -143,7 +143,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
                 let items = entry.get_array("items").ok()?;
                 items
                     .iter()
-                    .filter_map(|bs| format_entry(bs))
+                    .filter_map(format_entry)
                     .map(|s| format!("\t• {}", s))
                     .collect::<Vec<_>>()
                     .join("\n")
@@ -202,7 +202,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
                         table.add_row(Row::from(
                             array
                                 .iter()
-                                .filter_map(|cell| format_entry(cell))
+                                .filter_map(format_entry)
                                 .map(|cell| demarkup(&cell))
                                 .map(|cell| Cell::new(&cell))
                                 .collect::<Vec<_>>(),
@@ -245,7 +245,7 @@ fn simple_format(bs: &Bson) -> String {
         Bson::String(s) => s.to_owned(),
         Bson::Array(arr) => arr
             .iter()
-            .map(|bs| simple_format(bs))
+            .map(simple_format)
             .collect::<Vec<String>>()
             .join(", "),
         Bson::Document(doc) => doc

@@ -103,7 +103,7 @@ impl Spell for Document {
         durations
             .iter()
             .filter_map(|bs| bs.as_document())
-            .filter_map(|doc| get_duration(doc))
+            .filter_map(get_duration)
             .collect::<Vec<_>>()
             .join(", ")
             .into_option()
