@@ -276,7 +276,8 @@ impl Expression {
                 Operand::Num(n) => *n as u64,
             },
             Expression::Plus(a, b) => a.calc() + b.calc(),
-            Expression::Minus(a, b) => a.calc() - b.calc(),
+            // TODO: Fix subtraction
+            Expression::Minus(a, b) => a.calc().checked_sub(b.calc()).unwrap_or_default(),
             Expression::Multiply(a, b) => a.calc() * b.calc(),
             Expression::Divide(a, b) => (a.calc() as f32 / b.calc() as f32).round() as u64,
         }

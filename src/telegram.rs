@@ -332,9 +332,6 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
                         format!("{} {}", item.get_default_command(), arg1),
                     )]);
                     *keyboard = kb;
-                    format!("_{}_", nice_str)
-                } else {
-                    format!("_{}_", nice_str)
                 }
                 format!("_{}_", nice_str)
             }
