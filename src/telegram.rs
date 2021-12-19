@@ -6,7 +6,6 @@ use thiserror::Error;
 
 use teloxide::{
     adaptors::{throttle::Limits, Throttle},
-    dispatching::update_listeners,
     payloads::SendMessageSetters,
     prelude::*,
     types::{ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup},
@@ -76,6 +75,7 @@ pub enum BotError {
     EntryFormat,
 }
 
+#[allow(deprecated)]
 pub async fn process_message(
     cx: UpdateWithCx<AutoSend<Throttle<Bot>>, Message>,
     command: RollBotCommand,
@@ -102,7 +102,7 @@ pub async fn process_message(
 }
 
 async fn process_callback_query(
-    cx: UpdateWithCx<AutoSend<Throttle<Bot>>, CallbackQuery>,
+    _cx: UpdateWithCx<AutoSend<Throttle<Bot>>, CallbackQuery>,
 ) -> Result<(), BotError> {
     Ok(())
 }
@@ -132,6 +132,7 @@ fn stats() -> Result<String, BotError> {
     Ok(msg)
 }
 
+#[allow(deprecated)]
 async fn search_item(
     cx: UpdateWithCx<AutoSend<Throttle<Bot>>, Message>,
     lookup_item: &Collection,
@@ -148,7 +149,7 @@ async fn search_item(
             .parse_mode(ParseMode::Markdown)
             .reply_markup(force_reply)
             .await
-            .map_err(|err| BotError::Request(err));
+            .map_err(BotError::Request);
     }
 
     let exact_match_result = lookup_item
@@ -172,7 +173,7 @@ async fn search_item(
                 .parse_mode(ParseMode::Markdown)
                 .reply_markup(ReplyMarkup::InlineKeyboard(keyboard))
                 .await
-                .map_err(|err| BotError::Request(err))
+                .map_err(BotError::Request)
         }
         None => {
             let iter = lookup_item
@@ -211,7 +212,7 @@ async fn search_item(
                 .parse_mode(ParseMode::Markdown)
                 .reply_markup(ReplyMarkup::InlineKeyboard(keyboard))
                 .await
-                .map_err(|err| BotError::Request(err))
+                .map_err(BotError::Request)
         }
     }
 }
@@ -230,8 +231,8 @@ fn replace_bson_links(b: &mut Bson, keyboard: &mut InlineKeyboardMarkup) {
             replace_string_links(val, keyboard);
         }
         Bson::Array(arr) => {
-            for mut val in arr {
-                replace_bson_links(&mut val, keyboard);
+            for val in arr {
+                replace_bson_links(val, keyboard);
             }
         }
         Bson::Document(doc) => {
