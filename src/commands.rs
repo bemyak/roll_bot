@@ -75,4 +75,14 @@ impl BotCommand for RollBotCommand {
             }
         }
     }
+
+    fn bot_commands() -> Vec<teloxide::types::BotCommand> {
+        vec![
+            teloxide::types::BotCommand::new("roll", "Roll a dice (d20 by default)"),
+            teloxide::types::BotCommand::new("spell", "Search for a spell"),
+            teloxide::types::BotCommand::new("item", "Search for an item"),
+            teloxide::types::BotCommand::new("monster", "Search for a monster"),
+            teloxide::types::BotCommand::new("help", "Show help"),
+        ]
+    }
 }

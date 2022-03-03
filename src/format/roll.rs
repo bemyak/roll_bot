@@ -385,7 +385,13 @@ peg::parser! {
                         Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
                         Box::new(Expression::Value(Operand::num(num)))
                     ),
-                _ => unreachable!()
+                _ => {
+                    error!("Unknown sign {}", sign);
+                    Expression::Plus(
+                        Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+                        Box::new(Expression::Value(Operand::num(num)))
+                    )
+                }
             }
         }
 
