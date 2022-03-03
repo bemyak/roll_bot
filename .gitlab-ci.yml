@@ -7,17 +7,17 @@ variables:
   # Reminder to set INVENTORY_URL - Object storage pre-auth url to read ansible-inventory
   INVENTORY_URL: $INVENTORY_URL
 
-test:
-  # We need to use an image with GLIBC <= 2.17 to be compatible with CentOS 7
-  image: rust:bullseye
-  stage: compile
-  script:
-    - apt update && apt install -y cmake clang
-    - cargo test -- --test-threads=1
-  cache:
-    paths:
-      - cargo/
-      - target/
+# test:
+#   # We need to use an image with GLIBC <= 2.17 to be compatible with CentOS 7
+#   image: rust:bullseye
+#   stage: compile
+#   script:
+#     - apt update && apt install -y cmake clang
+#     - cargo test -- --test-threads=1
+#   cache:
+#     paths:
+#       - cargo/
+#       - target/
 
 build:
   image: rust:bullseye
