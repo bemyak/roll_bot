@@ -24,6 +24,7 @@ use crate::{
         monster::Monster,
         roll::{roll_results, DieFormatError},
         spell::Spell,
+        telegram::chat_type_to_string,
     },
     DB,
 };
@@ -89,6 +90,11 @@ pub async fn process_message(
     cx: UpdateWithCx<RollBot, Message>,
     command: RollBotCommand,
 ) -> Result<(), BotError> {
+    let start_processing = Instant::now();
+    let chat_id = cx.update.chat_id();
+    let chat_kind = cx.update.chat.kind.clone();
+    let msg_text = cx.update.text().unwrap_or_default().to_string();
+
     trace!(
         "Got message from @{}: {}",
         cx.update
@@ -97,38 +103,38 @@ pub async fn process_message(
             .unwrap_or_else(|| "unknown".to_string()),
         cx.update.text().unwrap_or_default()
     );
-    match command {
+    let response = match command {
         RollBotCommand::Help(opts) => match opts {
-            HelpOptions::None => {
-                cx.answer(format::telegram::help_message())
-                    .parse_mode(ParseMode::Markdown)
-                    .await
-                    .log_on_error()
-                    .await
-            }
-            HelpOptions::Roll => {
-                cx.answer(format::telegram::help_roll_message())
-                    .parse_mode(ParseMode::Markdown)
-                    .await
-                    .log_on_error()
-                    .await
-            }
-        },
-        RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await.log_on_error().await,
-        RollBotCommand::Stats => {
-            cx.answer(stats()?)
+            HelpOptions::None => cx
+                .answer(format::telegram::help_message())
                 .parse_mode(ParseMode::Markdown)
                 .await
-                .log_on_error()
+                .map_err(BotError::Request),
+            HelpOptions::Roll => cx
+                .answer(format::telegram::help_roll_message())
+                .parse_mode(ParseMode::Markdown)
                 .await
-        }
-        RollBotCommand::Query((collection, item)) => {
-            search_item(cx, collection, &item)
-                .await
-                .log_on_error()
-                .await
-        }
+                .map_err(BotError::Request),
+        },
+        RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await,
+        RollBotCommand::Stats => cx
+            .answer(stats()?)
+            .parse_mode(ParseMode::Markdown)
+            .await
+            .map_err(BotError::Request),
+        RollBotCommand::Query((collection, item)) => search_item(cx, collection, &item).await,
     };
+
+    DB.log_message(
+        chat_id,
+        chat_type_to_string(&chat_kind),
+        msg_text,
+        &response.map(|r| r.text().map(|s| s.to_owned())),
+        Instant::now()
+            .checked_duration_since(start_processing)
+            .unwrap()
+            .as_millis() as u64,
+    );
 
     Ok(())
 }
