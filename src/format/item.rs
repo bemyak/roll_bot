@@ -117,20 +117,16 @@ impl Item for Document {
         if let Some(entries) = self.get_entries("entries") {
             s.push_str(&format!("\n\n{}", &entries.join("\n")));
         }
-        if let Some(entries) = type_abbreviation
-            .map(|t| t.get_entries("entries"))
-            .flatten()
+        if let Some(entries) = type_abbreviation.and_then(|t| t.get_entries("entries"))
         {
             s.push_str(&format!("\n\n{}", &entries.join("\n")));
         }
-        if let Some(entries) = type_additional_abbreviation
-            .map(|t| t.get_entries("entries"))
-            .flatten()
+        if let Some(entries) = type_additional_abbreviation.and_then(|t| t.get_entries("entries"))
         {
             s.push_str(&format!("\n\n{}", &entries.join("\n")));
         }
         for t in property_abbreviations {
-            if let Some(entries) = t.map(|t| t.get_entries("entries")).flatten() {
+            if let Some(entries) = t.and_then(|t| t.get_entries("entries")) {
                 s.push_str(&format!("\n\n{}", &entries.join("\n")));
             }
         }

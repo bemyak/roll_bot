@@ -61,8 +61,7 @@ impl Spell for Document {
 
         times
             .iter()
-            .map(|time| time.as_document())
-            .flatten()
+            .filter_map(|time| time.as_document())
             .filter_map(|time| {
                 let number = time.get_i64("number").map(|number| number.to_string()).ok();
                 let unit = time.get_str("unit").map(str::to_owned).ok();
@@ -179,17 +178,13 @@ fn get_material(components: &Document) -> Option<String> {
 
 fn get_duration(duration: &Document) -> Option<String> {
     let type_ = duration.get_str("type").ok()?;
-    let concentration = duration
-        .get_bool("concentration")
-        .ok()
-        .map(|c| {
-            if c {
-                Some("concentration".to_string())
-            } else {
-                None
-            }
-        })
-        .flatten();
+    let concentration = duration.get_bool("concentration").ok().and_then(|c| {
+        if c {
+            Some("concentration".to_string())
+        } else {
+            None
+        }
+    });
     let duration = duration
         .get_document("duration")
         .map(|duration| {

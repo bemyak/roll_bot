@@ -67,9 +67,7 @@ lazy_static! {
 
         pub static ref COLLECTION_NAMES: Vec<CollectionName> = {
             COLLECTIONS
-            .iter()
-            .map(|c| c.collections)
-            .flatten()
+            .iter().flat_map(|c| c.collections)
             .copied()
             .collect::<Vec<_>>()
         };

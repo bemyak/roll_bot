@@ -339,8 +339,7 @@ impl MonsterPrivate for Document {
     fn get_legendary_group(&self) -> Option<String> {
         self.get_document("legendaryGroup")
             .ok()
-            .map(|doc| doc.get_string("name"))
-            .flatten()
+            .and_then(|doc| doc.get_string("name"))
     }
     fn get_legendary_header(&self) -> Option<Vec<String>> {
         let name = self.get_name().unwrap_or_else(|| "It".to_string());
@@ -424,7 +423,7 @@ impl MonsterUtils for Document {
                 doc.get_array_of(k, Bson::as_str).map(|spells| {
                     let spells = spells.join("\n");
                     if k.ends_with('e') {
-                        let lvl = k.replace("e", "");
+                        let lvl = k.replace('e', "");
                         format!("{}/{} each: {}", lvl, key, spells)
                     } else {
                         format!("{}/{}: {}", k, key, spells)

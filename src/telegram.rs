@@ -236,7 +236,7 @@ async fn search_item(
                 .collections
                 .iter()
                 .cloned()
-                .map(|collection| {
+                .flat_map(|collection| {
                     let cache = DB.cache.read().unwrap();
                     let engine = cache.get(collection).unwrap();
                     let results = engine.search(arg);
@@ -246,7 +246,6 @@ async fn search_item(
                         vec![button]
                     })
                 })
-                .flatten()
                 .collect::<Vec<_>>();
 
             let mut keyboard = InlineKeyboardMarkup::new(iter);
