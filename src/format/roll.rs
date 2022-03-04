@@ -23,14 +23,10 @@ pub fn roll_dice(msg: &str) -> Result<String, DieFormatError> {
             Some(comment) => format!(
                 "{}: {} = {}",
                 comment,
-                roll.expression.to_string(),
+                roll.expression,
                 roll.expression.calc()
             ),
-            None => format!(
-                "{} = {}",
-                roll.expression.to_string(),
-                roll.expression.calc()
-            ),
+            None => format!("{} = {}", roll.expression, roll.expression.calc()),
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -367,7 +363,7 @@ peg::parser! {
         }
 
         rule short_bonus() -> Expression
-        = _ sign:$['+' | '-' | '*' | '/' ] _ num:num() _ {
+        = _ sign:$['+' | '-' | '*' | '÷' ] _ num:num() _ {
             match sign {
                 "+" => Expression::Plus(
                         Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
@@ -385,13 +381,8 @@ peg::parser! {
                         Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
                         Box::new(Expression::Value(Operand::num(num)))
                     ),
-                _ => {
-                    error!("Unknown sign {}", sign);
-                    Expression::Plus(
-                        Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-                        Box::new(Expression::Value(Operand::num(num)))
-                    )
-                }
+                _ =>
+                    unreachable!("Unknown sign {}", sign)
             }
         }
 
