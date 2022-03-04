@@ -1,7 +1,10 @@
+#![allow(deprecated)]
+
 use std::{borrow::Cow, cmp::min, env, time::Instant};
 
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 use regex::{Captures, Regex};
+use reqwest::Url;
 use thiserror::Error;
 
 use teloxide::{
@@ -26,7 +29,7 @@ use crate::{
         spell::Spell,
         telegram::chat_type_to_string,
     },
-    DB,
+    DB, DONATION_URL, PROJECT_URL,
 };
 
 type RollBot = AutoSend<Throttle<CacheMe<Bot>>>;
@@ -104,18 +107,7 @@ pub async fn process_message(
         cx.update.text().unwrap_or_default()
     );
     let response = match command {
-        RollBotCommand::Help(opts) => match opts {
-            HelpOptions::None => cx
-                .answer(format::telegram::help_message())
-                .parse_mode(ParseMode::Markdown)
-                .await
-                .map_err(BotError::Request),
-            HelpOptions::Roll => cx
-                .answer(format::telegram::help_roll_message())
-                .parse_mode(ParseMode::Markdown)
-                .await
-                .map_err(BotError::Request),
-        },
+        RollBotCommand::Help(opts) => print_help(cx, opts).await,
         RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await,
         RollBotCommand::Stats => cx
             .answer(stats()?)
@@ -137,6 +129,49 @@ pub async fn process_message(
     );
 
     Ok(())
+}
+
+async fn print_help(
+    cx: UpdateWithCx<RollBot, Message>,
+    opts: HelpOptions,
+) -> Result<Message, BotError> {
+    match opts {
+        HelpOptions::None => {
+            let kb = InlineKeyboardMarkup::new(vec![
+                vec![
+                    InlineKeyboardButton::url(
+                        "Source Code".into(),
+                        Url::parse(PROJECT_URL).unwrap(),
+                    ),
+                    InlineKeyboardButton::url(
+                        "Buy me a coffee".into(),
+                        Url::parse(DONATION_URL).unwrap(),
+                    ),
+                ],
+                vec![
+                    InlineKeyboardButton::url(
+                        "News".into(),
+                        Url::parse("https://t.me/roll_bot_news").unwrap(),
+                    ),
+                    InlineKeyboardButton::url(
+                        "Chat".into(),
+                        Url::parse("https://t.me/roll_bot_chat").unwrap(),
+                    ),
+                ],
+            ]);
+            cx.answer(format::telegram::help_message())
+                .parse_mode(ParseMode::Markdown)
+                .reply_markup(ReplyMarkup::InlineKeyboard(kb))
+                .disable_web_page_preview(true)
+                .await
+                .map_err(BotError::Request)
+        }
+        HelpOptions::Roll => cx
+            .answer(format::telegram::help_roll_message())
+            .parse_mode(ParseMode::Markdown)
+            .await
+            .map_err(BotError::Request),
+    }
 }
 
 async fn process_callback_query(cx: UpdateWithCx<RollBot, CallbackQuery>) -> Result<(), BotError> {
@@ -198,7 +233,6 @@ fn stats() -> Result<String, BotError> {
     Ok(msg)
 }
 
-#[allow(deprecated)]
 async fn search_item(
     cx: UpdateWithCx<RollBot, Message>,
     lookup_item: &Collection,

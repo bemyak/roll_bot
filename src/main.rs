@@ -29,6 +29,7 @@ use tokio::time;
 use db::DndDatabase;
 
 pub const PROJECT_URL: &str = "https://gitlab.com/bemyak/roll_bot";
+pub const DONATION_URL: &str = "https://ko-fi.com/bemyak";
 
 lazy_static! {
     static ref DB: DndDatabase = {
