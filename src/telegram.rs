@@ -49,7 +49,10 @@ pub async fn start() {
         .await
         .expect("Should always be successful")
         .user
-        .first_name;
+        .username
+        .unwrap_or_else(|| "roll_bot".to_string());
+
+    debug!("Bot name {}", bot_name);
 
     Dispatcher::new(bot)
         .messages_handler(|rx: DispatcherHandlerRx<_, Message>| {
