@@ -1,21 +1,22 @@
-#![allow(deprecated)]
-
 use std::{borrow::Cow, cmp::min, env, time::Instant};
 
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
+use inflector::Inflector;
 use regex::{Captures, Regex};
 use reqwest::Url;
 use thiserror::Error;
 
 use teloxide::{
     adaptors::{throttle::Limits, CacheMe, Throttle},
-    payloads::SendMessageSetters,
-    prelude::*,
-    types::{ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup, User},
+    dispatching2::UpdateFilterExt,
+    prelude2::*,
+    types::{
+        ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup, Update,
+        User,
+    },
     utils::command::{BotCommand, ParseError},
     RequestError,
 };
-use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::{
     collection::{Collection, COMMANDS},
@@ -44,29 +45,26 @@ pub async fn start() {
         .cache_me()
         .throttle(Limits::default())
         .auto_send();
-    let bot_name = bot
-        .get_me()
-        .await
-        .expect("Should always be successful")
-        .user
-        .username
-        .unwrap_or_else(|| "roll_bot".to_string());
 
-    debug!("Bot name {}", bot_name);
+    let handler = dptree::entry()
+        .branch(
+            Update::filter_message()
+                .branch(
+                    dptree::entry()
+                        .filter_command::<RollBotCommand>()
+                        .endpoint(process_command),
+                )
+                .branch(
+                    dptree::filter(|msg: Message| {
+                        msg.text().is_some() && msg.reply_to_message().is_some()
+                    })
+                    .endpoint(process_message),
+                ),
+        )
+        .branch(Update::filter_callback_query().endpoint(process_callback_query));
 
-    Dispatcher::new(bot)
-        .messages_handler(|rx: DispatcherHandlerRx<_, Message>| {
-            UnboundedReceiverStream::new(rx)
-                .commands(bot_name)
-                .for_each_concurrent(None, |(cx, cmd)| async {
-                    process_message(cx, cmd).await.log_on_error().await;
-                })
-        })
-        .callback_queries_handler(|rx: DispatcherHandlerRx<_, CallbackQuery>| {
-            UnboundedReceiverStream::new(rx).for_each_concurrent(None, |message| async {
-                process_callback_query(message).await.log_on_error().await;
-            })
-        })
+    Dispatcher::builder(bot, handler)
+        .build()
         .setup_ctrlc_handler()
         .dispatch()
         .await;
@@ -91,33 +89,49 @@ pub enum BotError {
     EntryFormat,
 }
 
-#[allow(deprecated)]
-pub async fn process_message(
-    cx: UpdateWithCx<RollBot, Message>,
-    command: RollBotCommand,
-) -> Result<(), BotError> {
+async fn process_message(msg: Message, bot: RollBot) -> Result<(), BotError> {
+    let (collection, item_name) =
+        extract_search_data_from_reply(&msg).ok_or(BotError::EntryFormat)?;
+    search_item(msg.clone(), bot, collection, item_name).await?;
+    Ok(())
+}
+
+fn extract_search_data_from_reply(msg: &Message) -> Option<(&'static Collection, &str)> {
+    let item_name = msg.text()?;
+    let reply = msg.reply_to_message()?;
+    let reply = reply.text()?;
+    // reply_data contains our own message generated in `search_item` function, e.g.: "What item should I look for? ..."
+    // The second word is our collection name
+    let mut iter = reply.split_whitespace();
+    let _ = iter.next();
+
+    let collection = iter.next()?;
+    let collection = COMMANDS.get(collection)?;
+    Some((collection, item_name))
+}
+
+async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommand) -> Result<(), BotError> {
     let start_processing = Instant::now();
-    let chat_id = cx.update.chat_id();
-    let chat_kind = cx.update.chat.kind.clone();
-    let msg_text = cx.update.text().unwrap_or_default().to_string();
+    let chat_id = msg.chat.id;
+    let chat_kind = msg.chat.kind.clone();
+    let msg_text = msg.text().unwrap_or_default().to_string();
 
     trace!(
         "Got message from @{}: {}",
-        cx.update
-            .from()
+        msg.from()
             .map(User::full_name)
             .unwrap_or_else(|| "unknown".to_string()),
-        cx.update.text().unwrap_or_default()
+        msg.text().unwrap_or_default()
     );
-    let response = match command {
-        RollBotCommand::Help(opts) => print_help(cx, opts).await,
-        RollBotCommand::Roll(roll) => split_and_send(cx, &roll, None).await,
-        RollBotCommand::Stats => cx
-            .answer(stats()?)
+    let response = match cmd {
+        RollBotCommand::Help(opts) => print_help(msg, bot, opts).await,
+        RollBotCommand::Roll(roll) => split_and_send(msg, bot, &roll, None).await,
+        RollBotCommand::Stats => bot
+            .send_message(msg.chat.id, stats()?)
             .parse_mode(ParseMode::Markdown)
             .await
             .map_err(BotError::Request),
-        RollBotCommand::Query((collection, item)) => search_item(cx, collection, &item).await,
+        RollBotCommand::Query((collection, item)) => search_item(msg, bot, collection, &item).await,
     };
 
     DB.log_message(
@@ -134,10 +148,7 @@ pub async fn process_message(
     Ok(())
 }
 
-async fn print_help(
-    cx: UpdateWithCx<RollBot, Message>,
-    opts: HelpOptions,
-) -> Result<Message, BotError> {
+async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Message, BotError> {
     match opts {
         HelpOptions::None => {
             let kb = InlineKeyboardMarkup::new(vec![
@@ -162,28 +173,24 @@ async fn print_help(
                     ),
                 ],
             ]);
-            cx.answer(format::telegram::help_message())
+            bot.send_message(msg.chat.id, format::telegram::help_message())
                 .parse_mode(ParseMode::Markdown)
                 .reply_markup(ReplyMarkup::InlineKeyboard(kb))
                 .disable_web_page_preview(true)
                 .await
                 .map_err(BotError::Request)
         }
-        HelpOptions::Roll => cx
-            .answer(format::telegram::help_roll_message())
+        HelpOptions::Roll => bot
+            .send_message(msg.chat.id, format::telegram::help_roll_message())
             .parse_mode(ParseMode::Markdown)
             .await
             .map_err(BotError::Request),
     }
 }
 
-async fn process_callback_query(cx: UpdateWithCx<RollBot, CallbackQuery>) -> Result<(), BotError> {
-    trace!(
-        "Got callback from @{}: {:?}",
-        cx.update.from.first_name,
-        cx.update.data
-    );
-    if let (Some(data), Some(msg)) = (cx.update.data, cx.update.message) {
+async fn process_callback_query(msg: CallbackQuery, bot: RollBot) -> Result<(), BotError> {
+    trace!("Got callback from @{}: {:?}", msg.from.first_name, msg.data);
+    if let (Some(data), Some(msg)) = (msg.data, msg.message) {
         // Support for old buttons, remove after a while
         let data = if data.starts_with('/') {
             data
@@ -191,8 +198,7 @@ async fn process_callback_query(cx: UpdateWithCx<RollBot, CallbackQuery>) -> Res
             "/".to_string() + &data
         };
 
-        let bot_name = cx
-            .requester
+        let bot_name = bot
             .get_me()
             .await
             .expect("Should always be successful")
@@ -200,12 +206,7 @@ async fn process_callback_query(cx: UpdateWithCx<RollBot, CallbackQuery>) -> Res
             .first_name;
         let cmd = RollBotCommand::parse(&data, bot_name)?;
 
-        let new_cx = UpdateWithCx {
-            requester: cx.requester.clone(),
-            update: msg,
-        };
-
-        process_message(new_cx, cmd).await
+        process_command(msg, bot, cmd).await
     } else {
         Ok(())
     }
@@ -237,18 +238,27 @@ fn stats() -> Result<String, BotError> {
 }
 
 async fn search_item(
-    cx: UpdateWithCx<RollBot, Message>,
+    msg: Message,
+    bot: RollBot,
     lookup_item: &Collection,
     arg: &str,
 ) -> Result<Message, BotError> {
     if arg.is_empty() {
-        let force_reply = ForceReply::new().selective(true);
+        let force_reply = ForceReply::new()
+            .selective(true)
+            .input_field_placeholder(format!(
+                "{} to search",
+                lookup_item.get_default_command().to_title_case()
+            ));
 
-        return cx
-            .answer(format!(
-                "What {} should I look for? Please, *reply* on this message with a name:",
-                lookup_item.get_default_command()
-            ))
+        return bot
+            .send_message(
+                msg.chat.id,
+                format!(
+                    "What {} should I look for? Please, *reply* to this message with a name:",
+                    lookup_item.get_default_command()
+                ),
+            )
             .parse_mode(ParseMode::Markdown)
             .reply_markup(force_reply)
             .await
@@ -265,14 +275,20 @@ async fn search_item(
         Some(mut item) => {
             let mut keyboard = InlineKeyboardMarkup::default();
             replace_links(&mut item, &mut keyboard);
-            let mut msg = match lookup_item.type_ {
+            let mut reply_msg = match lookup_item.type_ {
                 crate::collection::CollectionType::Item => item.format_item(),
                 crate::collection::CollectionType::Monster => item.format_monster(),
                 crate::collection::CollectionType::Spell => item.format_spell(),
             }
             .ok_or(BotError::EntryFormat)?;
-            replace_string_links(&mut msg, &mut keyboard);
-            split_and_send(cx, &msg, Some(ReplyMarkup::InlineKeyboard(keyboard))).await
+            replace_string_links(&mut reply_msg, &mut keyboard);
+            split_and_send(
+                msg,
+                bot,
+                &reply_msg,
+                Some(ReplyMarkup::InlineKeyboard(keyboard)),
+            )
+            .await
         }
         None => {
             let iter = lookup_item
@@ -293,7 +309,7 @@ async fn search_item(
 
             let mut keyboard = InlineKeyboardMarkup::new(iter);
 
-            let mut msg = if keyboard.inline_keyboard.is_empty() {
+            let mut reply_msg = if keyboard.inline_keyboard.is_empty() {
                 format!(
                     "Can't find any {} with this name, sorry :(",
                     lookup_item.get_default_command()
@@ -305,13 +321,14 @@ async fn search_item(
                 )
             };
 
-            replace_string_links(&mut msg, &mut keyboard);
-            split_and_send(cx, &msg, Some(ReplyMarkup::InlineKeyboard(keyboard))).await
-            // cx.answer(&msg)
-            //     .parse_mode(ParseMode::Markdown)
-            //     .reply_markup(ReplyMarkup::InlineKeyboard(keyboard))
-            // .await
-            // .map_err(BotError::Request)
+            replace_string_links(&mut reply_msg, &mut keyboard);
+            split_and_send(
+                msg,
+                bot,
+                &reply_msg,
+                Some(ReplyMarkup::InlineKeyboard(keyboard)),
+            )
+            .await
         }
     }
 }
@@ -404,9 +421,9 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
 // Splitting messages that are too long
 // Hope this will be moved into the tg lib someday
 
-#[allow(deprecated)]
 async fn split_and_send(
-    cx: UpdateWithCx<RollBot, Message>,
+    msg: Message,
+    bot: RollBot,
     text: &str,
     keyboard: Option<ReplyMarkup>,
 ) -> Result<Message, BotError> {
@@ -418,10 +435,14 @@ async fn split_and_send(
     let (last, all) = messages.split_last().unwrap();
 
     for text in all {
-        cx.answer(text).parse_mode(ParseMode::Markdown).await?;
+        bot.send_message(msg.chat.id, text)
+            .parse_mode(ParseMode::Markdown)
+            .await?;
     }
 
-    let mut answer = cx.answer(last).parse_mode(ParseMode::Markdown);
+    let mut answer = bot
+        .send_message(msg.chat.id, last)
+        .parse_mode(ParseMode::Markdown);
 
     if let Some(markup) = keyboard {
         answer = answer.reply_markup(markup);

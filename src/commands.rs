@@ -6,7 +6,7 @@ use crate::{
     format::roll::roll_dice,
 };
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum RollBotCommand {
     Help(HelpOptions),
     Roll(String),
@@ -14,7 +14,7 @@ pub enum RollBotCommand {
     Query((&'static Collection, String)),
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum HelpOptions {
     None,
     Roll,
