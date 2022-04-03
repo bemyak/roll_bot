@@ -74,7 +74,7 @@ impl Entry for Document {
         entries
             .into_iter()
             .filter_map(|t| {
-                let name = t.get_str("name").map(|s| format!("*{}*:", s)).ok();
+                let name = t.get_str("name").map(|s| format!("<b>{}</b>:", s)).ok();
                 let entries = t.get_entries("entries").map(|entries| entries.join("\n"));
                 vec![name, entries].filter_join(" ")
             })
@@ -86,7 +86,7 @@ impl Entry for Document {
         let mut res = String::new();
         self.into_iter().for_each(|(k, v)| match k.as_ref() {
             "_id" => {}
-            "name" => write!(&mut res, "*{}*\n\n", v).unwrap(),
+            "name" => write!(&mut res, "<b>{}</b>\n\n", v).unwrap(),
             "entries" => {
                 let s = match v {
                     Bson::Array(arr) => arr
@@ -98,7 +98,7 @@ impl Entry for Document {
                 };
                 write!(&mut res, "\n{}\n\n", s).unwrap()
             }
-            _ => writeln!(&mut res, "*{}*: {}", k, simple_format(v)).unwrap(),
+            _ => writeln!(&mut res, "<b>{}</b>: {}", k, simple_format(v)).unwrap(),
         });
         res
     }
@@ -169,14 +169,14 @@ fn format_entry(entry: &Bson) -> Option<String> {
                 let name = entry.get_str("name").ok()?;
                 let entries = entry.get_array_of("entries", Bson::as_str)?;
 
-                format!("*{}*: {}", name, entries.join("\n"))
+                format!("<b>{}</b>: {}", name, entries.join("\n"))
             }
             "table" => {
                 let mut table_result = String::new();
                 let caption = entry.get_str("caption");
 
                 if let Ok(caption) = caption {
-                    table_result.push_str(&format!("*{}*\n", caption))
+                    table_result.push_str(&format!("<b>{}</b>\n", caption))
                 }
 
                 let mut table = Table::new();
@@ -210,7 +210,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
                     }
                 });
 
-                table_result.push_str(&format!("```\n{}```", table));
+                table_result.push_str(&format!("<pre>\n{}</pre>", table));
                 table_result
             }
             "cell" => {
@@ -294,16 +294,10 @@ pub fn cost_to_string(cost: i64) -> String {
 
 fn demarkup(s: &str) -> String {
     lazy_static! {
-        static ref BOLD: Regex = Regex::new(r"\*(.+?)\*").unwrap();
-        static ref ITALIC: Regex = Regex::new(r"_(.+?)_").unwrap();
-        static ref STRIKE: Regex = Regex::new(r"\~(.+?)\~").unwrap();
-        static ref MONO: Regex = Regex::new(r"`(.+?)`").unwrap();
+        static ref TAG: Regex = Regex::new(r"</?\S+>").unwrap();
     }
 
-    let s = BOLD.replace_all(s, "$1");
-    let s = ITALIC.replace_all(&s, "$1");
-    let s = STRIKE.replace_all(&s, "$1");
-    let s = MONO.replace_all(&s, "$1");
+    let s = TAG.replace_all(s, "$1");
 
     s.into()
 }

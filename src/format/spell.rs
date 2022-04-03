@@ -109,28 +109,28 @@ impl Spell for Document {
     }
 
     fn format_spell(&self) -> Option<String> {
-        let mut s = format!("*{}*", self.get_name()?);
+        let mut s = format!("<b>{}</b>", self.get_name()?);
 
         if let Some(meta) = self.get_meta() {
-            s.push_str(&format!("\n_{}_", &meta));
+            s.push_str(&format!("\n<i>{}</i>", &meta));
         }
 
         s.push('\n');
 
         if let Some(casting_time) = self.get_casting_time() {
-            s.push_str(&format!("\n*Casting time*: {}", &casting_time));
+            s.push_str(&format!("\n<b>Casting time</b>: {}", &casting_time));
         }
 
         if let Some(range) = self.get_range() {
-            s.push_str(&format!("\n*Range*: {}", &range));
+            s.push_str(&format!("\n<b>Range</b>: {}", &range));
         }
 
         if let Some(components) = self.get_components() {
-            s.push_str(&format!("\n*Components*: {}", &components));
+            s.push_str(&format!("\n<b>Components</b>: {}", &components));
         }
 
         if let Some(duration) = self.get_duration() {
-            s.push_str(&format!("\n*Duration*: {}", &duration));
+            s.push_str(&format!("\n<b>Duration</b>: {}", &duration));
         }
 
         if let Some(entries) = self.get_entries("entries") {
@@ -142,7 +142,7 @@ impl Spell for Document {
         }
 
         if let Some(source) = self.get_source() {
-            s.push_str(&format!("\n\n_{}_", &source));
+            s.push_str(&format!("\n\n<i>{}</i>", &source));
         }
 
         Some(s)

@@ -10,7 +10,7 @@ pub trait Monster: Entry {
 impl Monster for Document {
     fn format_monster(&self) -> Option<String> {
         let name = self.get_short_name().or_else(|| self.get_name())?;
-        let mut result = format!("*{}*", name);
+        let mut result = format!("<b>{}</b>", name);
 
         if let Some(val) = self.get_cr() {
             result.push_str(&format!("\tCR {}", val));
@@ -25,61 +25,61 @@ impl Monster for Document {
         ]
         .filter_join(", ");
         if let Some(meta) = meta {
-            result.push_str(&format!("\n_{}_\n", meta));
+            result.push_str(&format!("\n<i>{}</i>\n", meta));
         }
         if let Some(ac) = self.get_ac() {
-            result.push_str(&format!("\n*AC*: {}", ac));
+            result.push_str(&format!("\n<b>AC</b>: {}", ac));
         }
         if let Some(hp) = self.get_hp() {
-            result.push_str(&format!("\n*HP*: {}", hp));
+            result.push_str(&format!("\n<b>HP</b>: {}", hp));
         }
         if let Some(speed) = self.get_speed() {
-            result.push_str(&format!("\n*Speed*: {}", speed));
+            result.push_str(&format!("\n<b>Speed</b>: {}", speed));
         }
         if let Some(strength) = self.get_strength() {
-            result.push_str(&format!("\n*Str*: {}", strength));
+            result.push_str(&format!("\n<b>Str</b>: {}", strength));
         }
         if let Some(dex) = self.get_dex() {
-            result.push_str(&format!("\t*Dex*: {}", dex));
+            result.push_str(&format!("\t<b>Dex</b>: {}", dex));
         }
         if let Some(con) = self.get_con() {
-            result.push_str(&format!("\t*Con*: {}", con));
+            result.push_str(&format!("\t<b>Con</b>: {}", con));
         }
         if let Some(int) = self.get_int() {
-            result.push_str(&format!("\n*Int*: {}", int));
+            result.push_str(&format!("\n<b>Int</b>: {}", int));
         }
         if let Some(wis) = self.get_wis() {
-            result.push_str(&format!("\t*Wis*: {}", wis));
+            result.push_str(&format!("\t<b>Wis</b>: {}", wis));
         }
         if let Some(cha) = self.get_cha() {
-            result.push_str(&format!("\t*Cha*: {}", cha));
+            result.push_str(&format!("\t<b>Cha</b>: {}", cha));
         }
         if let Some(val) = self.get_save() {
-            result.push_str(&format!("\n*Saving Throws*: {}", val));
+            result.push_str(&format!("\n<b>Saving Throws</b>: {}", val));
         }
         if let Some(val) = self.get_skill() {
-            result.push_str(&format!("\n*Skills*: {}", val));
+            result.push_str(&format!("\n<b>Skills</b>: {}", val));
         }
         if let Some(val) = self.get_senses() {
-            result.push_str(&format!("\n*Senses*: {}", val));
+            result.push_str(&format!("\n<b>Senses</b>: {}", val));
         }
         if let Some(val) = self.get_passive() {
-            result.push_str(&format!("\n*Passive Perception*: {}", val));
+            result.push_str(&format!("\n<b>Passive Perception</b>: {}", val));
         }
         if let Some(val) = self.get_languages() {
-            result.push_str(&format!("\n*Languages*: {}", val));
+            result.push_str(&format!("\n<b>Languages</b>: {}", val));
         }
         if let Some(val) = self.get_vulnerable() {
-            result.push_str(&format!("\n*Damage Vulnerability*: {}", val));
+            result.push_str(&format!("\n<b>Damage Vulnerability</b>: {}", val));
         }
         if let Some(val) = self.get_resist() {
-            result.push_str(&format!("\n*Damage Resistance*: {}", val));
+            result.push_str(&format!("\n<b>Damage Resistance</b>: {}", val));
         }
         if let Some(val) = self.get_immune() {
-            result.push_str(&format!("\n*Damage Immunity*: {}", val));
+            result.push_str(&format!("\n<b>Damage Immunity</b>: {}", val));
         }
         if let Some(val) = self.get_condition_immune() {
-            result.push_str(&format!("\n*Condition Immunity*: {}", val));
+            result.push_str(&format!("\n<b>Condition Immunity</b>: {}", val));
         }
         if let Some(val) = self.get_trait() {
             result.push_str(&format!("\n\n{}", val));
@@ -88,13 +88,13 @@ impl Monster for Document {
             result.push_str(&format!("\n\n{}", val));
         }
         if let Some(val) = self.get_action() {
-            result.push_str(&format!("\n\n*Actions*\n{}", val));
+            result.push_str(&format!("\n\n<b>Actions</b>\n{}", val));
         }
         if let Some(val) = self.get_reaction() {
-            result.push_str(&format!("\n\n*Reactions*\n{}", val));
+            result.push_str(&format!("\n\n<b>Reactions</b>\n{}", val));
         }
         if let Some(val) = self.get_legendary() {
-            result.push_str("\n\n*Legendary Actions*\n");
+            result.push_str("\n\n<b>Legendary Actions</b>\n");
             if let Some(val) = self.get_legendary_header() {
                 result.push_str(&val.join("\n"));
             }
@@ -109,7 +109,7 @@ impl Monster for Document {
             }
         }
         if let Some(val) = self.get_mythic() {
-            result.push_str("\n\n*Mythic Actions*\n");
+            result.push_str("\n\n<b>Mythic Actions</b>\n");
             if let Some(val) = self.get_mythic_header() {
                 result.push_str(&val.join("\n"));
             }
@@ -492,7 +492,7 @@ impl MonsterUtils for Document {
         let mut result = String::new();
 
         if let Some(name) = name {
-            result.push_str(&format!("*{}*: ", name));
+            result.push_str(&format!("<b>{}</b>: ", name));
         }
         if let Some(header) = header {
             result.push_str(&header.join("\n"));
@@ -529,13 +529,16 @@ impl MonsterUtils for Document {
         let mut result = String::new();
 
         if let Some(lair) = lair {
-            result.push_str(&format!("\n\n*Lair Actions*\n{}", lair.join("\n")))
+            result.push_str(&format!("\n\n<b>Lair Actions</b>\n{}", lair.join("\n")))
         }
         if let Some(regional) = regional {
-            result.push_str(&format!("\n\n*Regional Effects*\n{}", regional.join("\n")))
+            result.push_str(&format!(
+                "\n\n<b>Regional Effects</b>\n{}",
+                regional.join("\n")
+            ))
         }
         if let Some(mythic) = mythic {
-            result.push_str(&format!("\n\n*Mythic Effects*\n{}", mythic.join("\n")))
+            result.push_str(&format!("\n\n<b>Mythic Effects</b>\n{}", mythic.join("\n")))
         }
         result.into_option()
     }

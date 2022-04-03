@@ -157,13 +157,13 @@ impl Display for Dice {
         let face_int = if self.face == 0 { 20 } else { self.face };
         match self.num {
             DiceNum::Advantage => {
-                write!(f, "`d{} with advantage`", face_str)?;
+                write!(f, "<code>d{face_str} with advantage</code>")?;
             }
             DiceNum::Disadvantage => {
-                write!(f, "`d{} with disadvantage`", face_str)?;
+                write!(f, "<code>d{face_str} with disadvantage</code>")?;
             }
             DiceNum::Num(n) => {
-                write!(f, "`{}d{}`", n, face_str)?;
+                write!(f, "<code>{n}d{face_str}</code>")?;
             }
         };
         let mut roll_results = self
@@ -171,9 +171,9 @@ impl Display for Dice {
             .iter()
             .map(|roll| {
                 if *roll == 1 || *roll == face_int {
-                    format!("*{}*", roll)
+                    format!("<b>{roll}</b>")
                 } else {
-                    format!("{}", roll)
+                    format!("{roll}")
                 }
             })
             .collect::<Vec<_>>()
@@ -181,7 +181,7 @@ impl Display for Dice {
         if self.face == 0 {
             zalgofy(&mut roll_results);
         }
-        write!(f, "\\[{}]", roll_results)
+        write!(f, " [{}]", roll_results)
     }
 }
 

@@ -36,7 +36,7 @@ pub trait Item: Entry {
 
 impl Item for Document {
     fn format_item(&self) -> Option<String> {
-        let mut s = format!("*{}*", self.get_name()?);
+        let mut s = format!("<b>{}</b>", self.get_name()?);
 
         let type_ = self.get_type();
         let (type_abbreviation, type_additional_abbreviation) = if let Some(type_) = &type_ {
@@ -72,46 +72,49 @@ impl Item for Document {
             .filter_join(", ")
             .map(|s| s.capitalize());
         if let Some(meta) = meta {
-            s.push_str(&format!("\n_{}_", meta));
+            s.push_str(&format!("\n<i>{}</i>", meta));
         }
 
         if let Some(attune) = self.get_attune() {
-            s.push_str(&format!("\n_{}_", attune.capitalize()));
+            s.push_str(&format!("\n<i>{}</i>", attune.capitalize()));
         }
         if let Some(value) = self.get_value() {
-            s.push_str(&format!("\n\n*Cost*: {}", cost_to_string(value)));
+            s.push_str(&format!("\n\n<b>Cost</b>: {}", cost_to_string(value)));
         }
         if let Some(carrying_capacity) = self.get_carrying_capacity() {
-            s.push_str(&format!("\n*Carrying capacity*: {} lb.", carrying_capacity));
+            s.push_str(&format!(
+                "\n<b>Carrying capacity</b>: {} lb.",
+                carrying_capacity
+            ));
         }
         if let Some(ac) = self.get_ac() {
-            s.push_str(&format!("\n*AC*: {}", ac));
+            s.push_str(&format!("\n<b>AC</b>: {}", ac));
         }
         if let Some(dmg1) = self.get_dmg1() {
-            s.push_str(&format!("\n*Damage*: {}", dmg1));
+            s.push_str(&format!("\n<b>Damage</b>: {}", dmg1));
             if let Some(dmg_type) = self.get_dmg_type() {
                 s.push_str(&format!(" {}", dmg_type))
             }
         } else if let Some(dmg_type) = self.get_dmg_type() {
-            s.push_str(&format!("\n*Damage type*: {}", dmg_type))
+            s.push_str(&format!("\n<b>Damage type</b>: {}", dmg_type))
         }
         if let Some(speed) = self.get_speed() {
-            s.push_str(&format!("\n*Speed*: {}", speed));
+            s.push_str(&format!("\n<b>Speed</b>: {}", speed));
         }
 
         if let Some(weight) = self.get_weight() {
-            s.push_str(&format!("\n*Weight*: {} lb", weight));
+            s.push_str(&format!("\n<b>Weight</b>: {} lb", weight));
         }
 
         if let Some(ammo_type) = self.get_ammo_type() {
-            s.push_str(&format!("\n*Ammo Type*: {}", ammo_type));
+            s.push_str(&format!("\n<b>Ammo Type</b>: {}", ammo_type));
         }
 
         if let Some(bonus_ac) = self.get_bonus_ac() {
-            s.push_str(&format!("\n*AC Bonus*: {}", bonus_ac));
+            s.push_str(&format!("\n<b>AC Bonus</b>: {}", bonus_ac));
         }
         if let Some(bonus_weapon_attack) = self.get_bonus_weapon_attack() {
-            s.push_str(&format!("\n*Attack Bonus*: {}", bonus_weapon_attack));
+            s.push_str(&format!("\n<b>Attack Bonus</b>: {}", bonus_weapon_attack));
         }
 
         if let Some(entries) = self.get_entries("entries") {
@@ -130,10 +133,13 @@ impl Item for Document {
         }
 
         if let Some(loot_tables) = self.get_loot_tables() {
-            s.push_str(&format!("\n\n*Loot tables*: {}", loot_tables.join(" ")));
+            s.push_str(&format!(
+                "\n\n<b>Loot tables</b>: {}",
+                loot_tables.join(" ")
+            ));
         }
         if let Some(source) = self.get_source() {
-            s.push_str(&format!("\n\n_{}_", source));
+            s.push_str(&format!("\n\n<i>{}</i>", source));
         }
 
         Some(s)

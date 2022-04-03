@@ -5,7 +5,13 @@ use crate::get_unix_time;
 
 pub fn format_collection_metadata(meta: ejdb::meta::DatabaseMetadata) -> String {
     meta.collections()
-        .map(|col| format!("`{}`: `{}` records", col.name(), col.records()))
+        .map(|col| {
+            format!(
+                "<code>{}</code>: <code>{}</code> records",
+                col.name(),
+                col.records()
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -71,20 +77,10 @@ pub fn format_message_stats(msgs: Vec<LogMessage>) -> Result<String, ejdb::Error
     let users_total_month = users.iter().filter(|(_, ts)| ts >= &&mount_ago).count();
 
     Ok(format!(
-        "Total messages: `{}` / `{}`
-Unique users: `{}` / `{}`
-Max latency, ms: `{}` / `{}`
-Avg latency, ms: `{}` / `{}`
-Min latency, ms: `{}` / `{}`",
-        msg_total_month,
-        msg_total,
-        users_total_month,
-        users_total,
-        max_latency_month,
-        max_latency,
-        avg_latency_month,
-        avg_latency,
-        min_latency_month,
-        min_latency
+        "Total messages: <code>{msg_total_month}</code> / <code>{msg_total}<code>
+Unique users: <code>{users_total_month}</code> / <code>{users_total}</code>
+Max latency, ms: <code>{max_latency_month}</code> / <code>{max_latency}</code>
+Avg latency, ms: <code>{avg_latency_month}</code> / <code>{avg_latency}</code>
+Min latency, ms: <code>{min_latency_month}</code> / <code>{min_latency}</code>",
     ))
 }

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cmp::min, env, time::Instant};
+use std::{borrow::Cow, env, time::Instant};
 
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 use inflector::Inflector;
@@ -37,7 +37,7 @@ type RollBot = AutoSend<Throttle<CacheMe<Bot>>>;
 
 pub async fn start() {
     let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
-        error!("You must provide `ROLL_BOT_TOKEN` environment variable!");
+        error!("You must provide <code>ROLL_BOT_TOKEN</code> environment variable!");
         std::process::exit(1)
     });
 
@@ -128,7 +128,7 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommand) -> Res
         RollBotCommand::Roll(roll) => split_and_send(msg, bot, &roll, None).await,
         RollBotCommand::Stats => bot
             .send_message(msg.chat.id, stats()?)
-            .parse_mode(ParseMode::Markdown)
+            .parse_mode(ParseMode::Html)
             .await
             .map_err(BotError::Request),
         RollBotCommand::Query((collection, item)) => search_item(msg, bot, collection, &item).await,
@@ -174,7 +174,7 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
                 ],
             ]);
             bot.send_message(msg.chat.id, format::telegram::help_message())
-                .parse_mode(ParseMode::Markdown)
+                .parse_mode(ParseMode::Html)
                 .reply_markup(ReplyMarkup::InlineKeyboard(kb))
                 .disable_web_page_preview(true)
                 .await
@@ -182,7 +182,7 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
         }
         HelpOptions::Roll => bot
             .send_message(msg.chat.id, format::telegram::help_roll_message())
-            .parse_mode(ParseMode::Markdown)
+            .parse_mode(ParseMode::Html)
             .await
             .map_err(BotError::Request),
     }
@@ -229,7 +229,7 @@ fn stats() -> Result<String, BotError> {
     let messages = DB.get_all_massages()?;
 
     let msg = format!(
-        "*Table stats*\n{}\n\n*Usage stats* (since last month / total)\n{}\n\nLast database update `{}` ago",
+        "<b>Table stats</b>\n{}\n\n<b>Usage stats</b> (since last month / total)\n{}\n\nLast database update `{}` ago",
         format_collection_metadata(collection_metadata),
         format_message_stats(messages)?,
         update_str,
@@ -255,11 +255,11 @@ async fn search_item(
             .send_message(
                 msg.chat.id,
                 format!(
-                    "What {} should I look for? Please, *reply* to this message with a name:",
+                    "What {} should I look for? Please, <b>reply</b> to this message with a name:",
                     lookup_item.get_default_command()
                 ),
             )
-            .parse_mode(ParseMode::Markdown)
+            .parse_mode(ParseMode::Html)
             .reply_markup(force_reply)
             .await
             .map_err(BotError::Request);
@@ -383,15 +383,15 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
             "i" => format!("• {}", nice_str),
             "hit" => format!("+{}", arg1),
             "h" => match caps.name("bonus") {
-                Some(bonus) => format!("*{}*", bonus.as_str()),
+                Some(bonus) => format!("<b>{}</b>", bonus.as_str()),
                 None => "".to_owned(),
             },
             "atk" => "".to_owned(),
-            "scaledamage" => format!("*{}*", nice_str),
+            "scaledamage" => format!("<b>{}</b>", nice_str),
             "dice" | "damage" => {
                 let roll_results = roll_results(arg1).unwrap();
                 let roll = roll_results.get(0).unwrap();
-                format!("*{}* `[{}]` ", arg1, roll.expression.calc())
+                format!("<b>{}</b> <code>[{}]</code> ", arg1, roll.expression.calc())
             }
             "recharge" => {
                 if arg1.is_empty() {
@@ -410,7 +410,7 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
                     )]);
                     *keyboard = kb;
                 }
-                format!("_{}_", nice_str)
+                format!("<i>{}</i>", nice_str)
             }
         }
     });
@@ -431,18 +431,18 @@ async fn split_and_send(
         return Err(BotError::EntryFormat);
     }
 
-    let messages = split(text);
+    let messages = split2(text, 4096);
     let (last, all) = messages.split_last().unwrap();
 
     for text in all {
         bot.send_message(msg.chat.id, text)
-            .parse_mode(ParseMode::Markdown)
+            .parse_mode(ParseMode::Html)
             .await?;
     }
 
     let mut answer = bot
         .send_message(msg.chat.id, last)
-        .parse_mode(ParseMode::Markdown);
+        .parse_mode(ParseMode::Html);
 
     if let Some(markup) = keyboard {
         answer = answer.reply_markup(markup);
@@ -451,65 +451,134 @@ async fn split_and_send(
     answer.await.map_err(BotError::Request)
 }
 
-fn split(text: &str) -> Vec<String> {
-    const MAX_TEXT_LEN: usize = 4096;
+fn get_margin(v: &[Vec<u8>]) -> usize {
+    v.iter().map(|s| s.len() + 3).sum()
+}
+
+fn split2(text: &str, max_len: usize) -> Vec<String> {
+    enum State {
+        Text,
+        OpenTag,
+        CloseTag,
+    }
+
     let mut result = Vec::new();
+    let mut part = Vec::new();
+    let mut state = State::Text;
+    let mut tags = Vec::new();
+    let mut tag = Vec::new();
+    let mut sep_pos = 0;
+    let mut sep_tag_len = 0;
 
-    let bytes = text.as_bytes();
+    for b in text.bytes() {
+        if part.len() >= max_len - get_margin(&tags[..sep_tag_len]) {
+            if sep_pos == 0 {
+                sep_tag_len = tags.len();
+                tags = Vec::new();
+                sep_pos = part.len();
+            }
+            let mut new_part: Vec<_> = part.drain(..sep_pos).collect();
+            for tag in tags[..sep_tag_len].iter().rev() {
+                new_part.extend(format!("</{}>", String::from_utf8_lossy(tag)).as_bytes());
+            }
+            result.push(String::from_utf8_lossy(&new_part).to_string());
+            sep_pos = 0;
 
-    let mut start = 0;
-    let mut end;
-
-    while start < bytes.len() {
-        let hard_end = min(start + MAX_TEXT_LEN, bytes.len());
-        end = get_end(bytes, start, hard_end);
-
-        // We already know that it is a valid utf8
-        let s = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) };
-        result.push(s);
-        start = end + 1;
-    }
-
-    fix_tags(&result)
-}
-
-fn get_end(bytes: &[u8], start: usize, hard_end: usize) -> usize {
-    if hard_end == bytes.len() {
-        return hard_end;
-    }
-
-    for (i, byte) in bytes[start..hard_end].iter().enumerate().rev() {
-        let c = *byte as char;
-        if c == '\n' {
-            return start + i;
+            if !part.is_empty() {
+                part.remove(0);
+            }
+            let mut closing_tags = tags[..sep_tag_len]
+                .iter()
+                .map(|t| format!("<{}>", String::from_utf8_lossy(t)))
+                .collect::<Vec<_>>()
+                .join("")
+                .into_bytes();
+            closing_tags.extend(&part);
+            part = closing_tags;
         }
+
+        match state {
+            State::Text => match b as char {
+                '<' => {
+                    state = State::OpenTag;
+                }
+                '\n' => {
+                    if part.is_empty() {
+                        continue;
+                    }
+                    sep_tag_len = tags.len();
+                    sep_pos = part.len();
+                }
+                _ => {}
+            },
+            State::OpenTag => match b as char {
+                '/' => {
+                    if tag.is_empty() {
+                        state = State::CloseTag
+                    } else {
+                        tag.clear();
+                        state = State::Text
+                    }
+                }
+                '>' => {
+                    tags.push(tag);
+                    tag = Vec::new();
+                    state = State::Text;
+                }
+                _ => tag.push(b),
+            },
+            State::CloseTag => match b as char {
+                '>' => {
+                    if Some(&tag) == tags.last() {
+                        tags.pop();
+                        if sep_tag_len != 0 {
+                            sep_tag_len -= 1;
+                        }
+                    } else {
+                        warn!(
+                            "Unexpected closing tag: {} in\n{text}",
+                            String::from_utf8_lossy(&tag)
+                        )
+                    }
+                    tag = Vec::new();
+                    state = State::Text;
+                }
+                _ => tag.push(b),
+            },
+        }
+        part.push(b);
     }
-    hard_end
+
+    let part_str = String::from_utf8_lossy(&part);
+
+    result.push(part_str.to_string());
+    result
 }
 
-fn fix_tags(split: &[&str]) -> Vec<String> {
-    const MARKUP_TAGS: [&str; 4] = ["```", "`", "*", "_"];
+#[test]
+fn test_split2_simple1() {
+    let parts = split2("123\n456", 3);
+    assert_eq!("123", parts[0]);
+    assert_eq!("456", parts[1]);
+}
 
-    if split.len() == 1 {
-        return split.iter().map(|s| s.to_string()).collect();
-    }
+#[test]
+fn test_split2_simple2() {
+    let parts = split2("123\n456", 4);
+    assert_eq!("123", parts[0]);
+    assert_eq!("456", parts[1]);
+}
 
-    let mut tag_to_fix: Option<&str> = None;
-    split
-        .iter()
-        .map(|s| {
-            let mut s = s.to_string();
-            if let Some(t) = tag_to_fix {
-                tag_to_fix = None;
-                s = t.to_string() + &s;
-            }
-            for t in MARKUP_TAGS.iter() {
-                if s.matches(t).count() % 2 != 0 {
-                    s.push_str(t);
-                    tag_to_fix = Some(t);
-                }
-            }
-            s
-        })
-        .collect::<Vec<_>>()
+#[test]
+fn test_split2_tags1() {
+    let parts = split2("<b>1</b>23\n4<i>5</i>6", 17);
+    assert_eq!("<b>1</b>23", parts[0]);
+    assert_eq!("4<i>5</i>6", parts[1]);
+}
+
+#[test]
+fn test_split2_tags2() {
+    let parts = split2("<b>123\n4<i>5</i>6</b>", 17);
+    assert_eq!("<b>123</b>", parts[0]);
+    assert_eq!("<b>4<i>5</i>6</b>", parts[1]);
 }
