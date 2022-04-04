@@ -77,7 +77,7 @@ pub fn format_message_stats(msgs: Vec<LogMessage>) -> Result<String, ejdb::Error
     let users_total_month = users.iter().filter(|(_, ts)| ts >= &&mount_ago).count();
 
     Ok(format!(
-        "Total messages: <code>{msg_total_month}</code> / <code>{msg_total}<code>
+        "Total messages: <code>{msg_total_month}</code> / <code>{msg_total}</code>
 Unique users: <code>{users_total_month}</code> / <code>{users_total}</code>
 Max latency, ms: <code>{max_latency_month}</code> / <code>{max_latency}</code>
 Avg latency, ms: <code>{avg_latency_month}</code> / <code>{avg_latency}</code>

@@ -294,21 +294,25 @@ impl RollLine {
                 comment,
             },
             Some(comment) => {
-                const CHARS_TO_ESCAPE: [char; 5] = ['\\', '`', '*', '_', '['];
-
-                let mut escaped_comment = String::new();
-
-                for c in comment.chars() {
-                    if CHARS_TO_ESCAPE.contains(&c) {
-                        escaped_comment.push('\\');
-                    }
-                    escaped_comment.push(c)
-                }
-
                 Self {
                     expression,
-                    comment: Some(escaped_comment),
+                    comment: Some(comment),
                 }
+                // const CHARS_TO_ESCAPE: [char; 5] = ['\\', '`', '*', '_', '['];
+
+                // let mut escaped_comment = String::new();
+
+                // for c in comment.chars() {
+                //     if CHARS_TO_ESCAPE.contains(&c) {
+                //         escaped_comment.push('\\');
+                //     }
+                //     escaped_comment.push(c)
+                // }
+
+                // Self {
+                //     expression,
+                //     comment: Some(escaped_comment),
+                // }
             }
         }
     }
@@ -394,7 +398,7 @@ peg::parser! {
             if c.is_empty() {
                 None
             } else {
-                const TRIM: [char; 4] = ['\\', ',', ';', '.'];
+                const TRIM: [char; 5] = ['\\', ',', ';', '.', ':'];
                 let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c) );
                 Some(c.to_owned())
             }

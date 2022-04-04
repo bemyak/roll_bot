@@ -235,7 +235,7 @@ fn stats() -> Result<String, BotError> {
     let messages = DB.get_all_massages()?;
 
     let msg = format!(
-        "<b>Table stats</b>\n{}\n\n<b>Usage stats</b> (since last month / total)\n{}\n\nLast database update `{}` ago",
+        "<b>Table stats</b>\n{}\n\n<b>Usage stats</b> (since last month / total)\n{}\n\nLast database update <code>{}</code> ago",
         format_collection_metadata(collection_metadata),
         format_message_stats(messages)?,
         update_str,
