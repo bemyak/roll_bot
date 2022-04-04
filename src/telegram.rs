@@ -86,12 +86,18 @@ pub enum BotError {
     Parse(#[from] ParseError),
 
     #[error("Entry Format Error")]
-    EntryFormat,
+    EntryFormat(String),
+
+    #[error("Bad reply")]
+    BadReply(String),
+
+    #[error("No reply text was produced")]
+    NoReplyText(String),
 }
 
 async fn process_message(msg: Message, bot: RollBot) -> Result<(), BotError> {
-    let (collection, item_name) =
-        extract_search_data_from_reply(&msg).ok_or(BotError::EntryFormat)?;
+    let (collection, item_name) = extract_search_data_from_reply(&msg)
+        .ok_or_else(|| BotError::BadReply(msg.text().unwrap_or_default().to_owned()))?;
     search_item(msg.clone(), bot, collection, item_name).await?;
     Ok(())
 }
@@ -280,7 +286,9 @@ async fn search_item(
                 crate::collection::CollectionType::Monster => item.format_monster(),
                 crate::collection::CollectionType::Spell => item.format_spell(),
             }
-            .ok_or(BotError::EntryFormat)?;
+            .ok_or_else(|| {
+                BotError::EntryFormat(lookup_item.get_default_command().to_owned() + ": " + arg)
+            })?;
             replace_string_links(&mut reply_msg, &mut keyboard);
             split_and_send(
                 msg,
@@ -316,7 +324,7 @@ async fn search_item(
                 )
             } else {
                 format!(
-                    "I don't have any {} with this exact name, but these looks similar:",
+                    "I don't have any {} with this exact name, but these look similar:",
                     lookup_item.get_default_command()
                 )
             };
@@ -428,7 +436,9 @@ async fn split_and_send(
     keyboard: Option<ReplyMarkup>,
 ) -> Result<Message, BotError> {
     if text.is_empty() {
-        return Err(BotError::EntryFormat);
+        return Err(BotError::NoReplyText(
+            msg.text().unwrap_or_default().to_owned(),
+        ));
     }
 
     let messages = split2(text, 4096);

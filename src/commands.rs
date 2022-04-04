@@ -42,7 +42,10 @@ impl BotCommand for RollBotCommand {
         N: Into<String>,
     {
         let mut words = s.splitn(2, ' ');
-        let mut splited = words.next().expect("First item will always be.").split('@');
+        let mut splited = words
+            .next()
+            .expect("Command always starts with a slash (/)")
+            .split('@');
         let command_raw = splited.next().expect("First item will always be.");
         let bot = splited.next();
         let bot_name = bot_name.into();
@@ -53,11 +56,13 @@ impl BotCommand for RollBotCommand {
         }
         let args = words.next().unwrap_or("").to_string();
 
-        let cmd = command_raw.strip_prefix('/').unwrap_or(command_raw);
-        match cmd {
+        let cmd = command_raw
+            .strip_prefix('/')
+            .unwrap_or(command_raw)
+            .to_lowercase();
+        match cmd.as_str() {
             "help" | "h" | "about" | "start" => Ok(RollBotCommand::Help(
-                HelpOptions::from_str(&args)
-                    .map_err(|_| ParseError::UnknownCommand(cmd.to_string()))?,
+                HelpOptions::from_str(&args).map_err(|_| ParseError::UnknownCommand(cmd))?,
             )),
             "roll" | "r" => {
                 let res = roll_dice(&args)
@@ -67,7 +72,7 @@ impl BotCommand for RollBotCommand {
             }
             "stats" => Ok(Self::Stats),
             _ => {
-                if let Some(item) = COMMANDS.get(cmd) {
+                if let Some(item) = COMMANDS.get(cmd.as_str()) {
                     Ok(Self::Query((item, args)))
                 } else {
                     Err(ParseError::UnknownCommand(command_raw.to_string()))
