@@ -484,7 +484,6 @@ fn split2(text: &str, max_len: usize) -> Vec<String> {
         if part.len() >= max_len - get_margin(&tags[..sep_tag_len]) {
             if sep_pos == 0 {
                 sep_tag_len = tags.len();
-                tags = Vec::new();
                 sep_pos = part.len();
             }
             let mut new_part: Vec<_> = part.drain(..sep_pos).collect();

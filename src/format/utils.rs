@@ -1,5 +1,3 @@
-use std::mem;
-
 use percent_encoding::{percent_decode, utf8_percent_encode, NON_ALPHANUMERIC};
 use regex::Regex;
 use zalgo::{Generator, GeneratorArgs, ZalgoSize};
@@ -33,5 +31,5 @@ pub fn zalgofy(text: &mut String) {
     let mut zalgo = Generator::new();
     let mut buf = String::new();
     zalgo.gen(text.clone(), &mut buf, &OPTIONS);
-    mem::swap(text, &mut buf);
+    *text = buf;
 }

@@ -23,8 +23,8 @@ ordinal = "0.3.2"
 peg = "0.8.0"
 percent-encoding = "2.1.0"
 prometheus = { version = "0.13.0", default-features = false, features = ["process"] }
-rand = { version = "0.8.5" }
-regex = { version = "1.5.5" }
+rand = "0.8.5"
+regex = "1.5.5"
 reqwest = { version = "0.11.10", default-features = false, features = ["json", "rustls-tls"] }
 serde = "1.0.136"
 serde_json = { version = "1.0.79", default-features = false }
@@ -40,7 +40,7 @@ teloxide = { version = "0.7.3", default-features = false, features = [
 ] }
 thiserror = "1.0.30"
 tokio = { version = "1.17.0", default-features = false, features = ["rt-multi-thread", "macros"] }
-tokio-stream = { version = "0.1.8" }
+tokio-stream = "0.1.8"
 zalgo = "0.2.0"
 
 [dev-dependencies]
