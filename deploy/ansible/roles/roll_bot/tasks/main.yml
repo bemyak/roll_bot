@@ -1,5 +1,14 @@
 ---
 
+- name: Install firewalld
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - firewalld
+    - python3-firewall
+  become: yes
+
 - name: Allow incoming connection from prometheus
   firewalld:
     source: "{{ monitor_private_ip }}/32"
