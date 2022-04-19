@@ -8,19 +8,18 @@ use thiserror::Error;
 
 use teloxide::{
     adaptors::{throttle::Limits, CacheMe, Throttle},
-    dispatching2::UpdateFilterExt,
-    prelude2::*,
+    prelude::*,
     types::{
         ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup, Update,
         User,
     },
-    utils::command::{BotCommand, ParseError},
+    utils::command::{BotCommands, ParseError},
     RequestError,
 };
 
 use crate::{
     collection::{Collection, COMMANDS},
-    commands::{HelpOptions, RollBotCommand},
+    commands::{HelpOptions, RollBotCommands},
     format::{
         self,
         db::{format_collection_metadata, format_message_stats},
@@ -46,12 +45,17 @@ pub async fn start() {
         .throttle(Limits::default())
         .auto_send();
 
+    bot.set_my_commands(RollBotCommands::bot_commands())
+        .await
+        .log_on_error()
+        .await;
+
     let handler = dptree::entry()
         .branch(
             Update::filter_message()
                 .branch(
                     dptree::entry()
-                        .filter_command::<RollBotCommand>()
+                        .filter_command::<RollBotCommands>()
                         .endpoint(process_command),
                 )
                 .branch(
@@ -74,8 +78,7 @@ pub async fn start() {
 pub enum BotError {
     #[error("Request Error")]
     Request(#[from] RequestError),
-    // #[error("Telegram Error")]
-    // Telegram(ApiError),
+
     #[error("Database Error")]
     Db(#[from] ejdb::Error),
 
@@ -116,7 +119,7 @@ fn extract_search_data_from_reply(msg: &Message) -> Option<(&'static Collection,
     Some((collection, item_name))
 }
 
-async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommand) -> Result<(), BotError> {
+async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Result<(), BotError> {
     let start_processing = Instant::now();
     let chat_id = msg.chat.id;
     let chat_kind = msg.chat.kind.clone();
@@ -130,18 +133,20 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommand) -> Res
         msg.text().unwrap_or_default()
     );
     let response = match cmd {
-        RollBotCommand::Help(opts) => print_help(msg, bot, opts).await,
-        RollBotCommand::Roll(roll) => split_and_send(msg, bot, &roll, None).await,
-        RollBotCommand::Stats => bot
+        RollBotCommands::Help(opts) => print_help(msg, bot, opts).await,
+        RollBotCommands::Roll(roll) => split_and_send(msg, bot, &roll, None).await,
+        RollBotCommands::Stats => bot
             .send_message(msg.chat.id, stats()?)
             .parse_mode(ParseMode::Html)
             .await
             .map_err(BotError::Request),
-        RollBotCommand::Query((collection, item)) => search_item(msg, bot, collection, &item).await,
+        RollBotCommands::Query((collection, item)) => {
+            search_item(msg, bot, collection, &item).await
+        }
     };
 
     DB.log_message(
-        chat_id,
+        chat_id.0,
         chat_type_to_string(&chat_kind),
         msg_text,
         &response.map(|r| r.text().map(|s| s.to_owned())),
@@ -210,7 +215,7 @@ async fn process_callback_query(msg: CallbackQuery, bot: RollBot) -> Result<(), 
             .expect("Should always be successful")
             .user
             .first_name;
-        let cmd = RollBotCommand::parse(&data, bot_name)?;
+        let cmd = RollBotCommands::parse(&data, bot_name)?;
 
         process_command(msg, bot, cmd).await
     } else {

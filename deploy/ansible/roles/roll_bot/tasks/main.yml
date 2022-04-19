@@ -1,5 +1,4 @@
 ---
-
 - name: Install firewalld
   package:
     name: "{{ item }}"
@@ -7,7 +6,7 @@
   with_items:
     - firewalld
     - python3-firewall
-  become: yes
+  become: true
 
 - name: Allow incoming connection from prometheus
   firewalld:
@@ -16,7 +15,7 @@
     permanent: yes
     immediate: yes
     state: enabled
-  become: yes
+  become: true
 
 - name: Create user
   user:
@@ -24,21 +23,20 @@
     home: "{{ rollbot_install_dir }}"
     create_home: yes
     system: yes
-  become: yes
+  become: true
 
 - name: Install roll_bot binary
   copy:
     src: "{{ role_path }}/../../../../target/release/roll_bot"
     dest: "{{ rollbot_install_dir }}/"
     mode: "0771"
-  become: yes
-  
+  become: true
+
 - name: Install systemd unit file
   template:
     src: roll_bot.service.j2
     dest: /etc/systemd/system/roll_bot.service
-  become: yes
-
+  become: true
 
 - name: Start and enable roll_bot
   systemd:
@@ -46,4 +44,4 @@
     daemon_reload: yes
     enabled: yes
     state: restarted
-  become: yes
+  become: true

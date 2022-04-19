@@ -30,12 +30,11 @@ serde = "1.0.136"
 serde_json = { version = "1.0.79", default-features = false }
 simplelog = { version = "0.11.2", default-features = false }
 simsearch = "0.2.3"
-teloxide = { version = "0.7.3", default-features = false, features = [
+teloxide = { version = "0.8.0", default-features = false, features = [
     "rustls",
     "ctrlc_handler",
     "auto-send",
     "cache-me",
-    "dispatching2",
     "throttle",
 ] }
 thiserror = "1.0.30"

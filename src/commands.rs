@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use teloxide::utils::command::{BotCommand, ParseError};
+use teloxide::utils::command::{BotCommands, CommandDescription, CommandDescriptions, ParseError};
 
 use crate::{
     collection::{Collection, COMMANDS},
@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum RollBotCommand {
+pub enum RollBotCommands {
     Help(HelpOptions),
     Roll(String),
     Stats,
@@ -32,9 +32,35 @@ impl FromStr for HelpOptions {
     }
 }
 
-impl BotCommand for RollBotCommand {
-    fn descriptions() -> String {
-        crate::format::telegram::help_message()
+impl BotCommands for RollBotCommands {
+    fn descriptions() -> CommandDescriptions<'static> {
+        CommandDescriptions::new(&[
+            CommandDescription {
+                prefix: "/",
+                command: "roll",
+                description: "Roll a dice (d20 by default)",
+            },
+            CommandDescription {
+                prefix: "/",
+                command: "spell",
+                description: "Search for a spell",
+            },
+            CommandDescription {
+                prefix: "/",
+                command: "item",
+                description: "Search for an item",
+            },
+            CommandDescription {
+                prefix: "/",
+                command: "monster",
+                description: "Search for a monster",
+            },
+            CommandDescription {
+                prefix: "/",
+                command: "help",
+                description: "Show help",
+            },
+        ])
     }
 
     fn parse<N>(s: &str, bot_name: N) -> Result<Self, ParseError>
@@ -61,7 +87,7 @@ impl BotCommand for RollBotCommand {
             .unwrap_or(command_raw)
             .to_lowercase();
         match cmd.as_str() {
-            "help" | "h" | "about" | "start" => Ok(RollBotCommand::Help(
+            "help" | "h" | "about" | "start" => Ok(RollBotCommands::Help(
                 HelpOptions::from_str(&args).map_err(|_| ParseError::UnknownCommand(cmd))?,
             )),
             "roll" | "r" => {
