@@ -2,6 +2,8 @@ use super::{Capitalizable, Entry, FilterJoinable, Optionable};
 use ejdb::bson::Document;
 use ordinal::Ordinal;
 
+use std::fmt::Write;
+
 pub trait Spell: Entry {
     fn get_meta(&self) -> Option<String>;
     fn get_casting_time(&self) -> Option<String>;
@@ -44,7 +46,7 @@ impl Spell for Document {
                 "P" => "psionic",
                 _ => school,
             };
-            result.push_str(&format!(" {}", school));
+            write!(result, " {}", school).ok()?;
         }
         if is_ritual {
             result.push_str(" ritual");
@@ -112,37 +114,37 @@ impl Spell for Document {
         let mut s = format!("<b>{}</b>", self.get_name()?);
 
         if let Some(meta) = self.get_meta() {
-            s.push_str(&format!("\n<i>{}</i>", &meta));
+            write!(s, "\n<i>{}</i>", &meta).ok()?;
         }
 
         s.push('\n');
 
         if let Some(casting_time) = self.get_casting_time() {
-            s.push_str(&format!("\n<b>Casting time</b>: {}", &casting_time));
+            write!(s, "\n<b>Casting time</b>: {}", &casting_time).ok()?;
         }
 
         if let Some(range) = self.get_range() {
-            s.push_str(&format!("\n<b>Range</b>: {}", &range));
+            write!(s, "\n<b>Range</b>: {}", &range).ok()?;
         }
 
         if let Some(components) = self.get_components() {
-            s.push_str(&format!("\n<b>Components</b>: {}", &components));
+            write!(s, "\n<b>Components</b>: {}", &components).ok()?;
         }
 
         if let Some(duration) = self.get_duration() {
-            s.push_str(&format!("\n<b>Duration</b>: {}", &duration));
+            write!(s, "\n<b>Duration</b>: {}", &duration).ok()?;
         }
 
         if let Some(entries) = self.get_entries("entries") {
-            s.push_str(&format!("\n\n{}", &entries.join("\n")));
+            write!(s, "\n\n{}", &entries.join("\n")).ok()?;
         }
 
         if let Some(entries_high_level) = self.get_entries("entriesHigherLevel") {
-            s.push_str(&format!("\n\n{}", &entries_high_level.join("\n")));
+            write!(s, "\n\n{}", &entries_high_level.join("\n")).ok()?;
         }
 
         if let Some(source) = self.get_source() {
-            s.push_str(&format!("\n\n<i>{}</i>", &source));
+            write!(s, "\n\n<i>{}</i>", &source).ok()?;
         }
 
         Some(s)

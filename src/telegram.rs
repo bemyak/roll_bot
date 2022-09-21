@@ -68,8 +68,8 @@ pub async fn start() {
         .branch(Update::filter_callback_query().endpoint(process_callback_query));
 
     Dispatcher::builder(bot, handler)
+        .enable_ctrlc_handler()
         .build()
-        .setup_ctrlc_handler()
         .dispatch()
         .await;
 }
@@ -164,22 +164,16 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
         HelpOptions::None => {
             let kb = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::url(
-                        "Source Code".into(),
-                        Url::parse(PROJECT_URL).unwrap(),
-                    ),
-                    InlineKeyboardButton::url(
-                        "Buy me a coffee".into(),
-                        Url::parse(DONATION_URL).unwrap(),
-                    ),
+                    InlineKeyboardButton::url("Source Code", Url::parse(PROJECT_URL).unwrap()),
+                    InlineKeyboardButton::url("Buy me a coffee", Url::parse(DONATION_URL).unwrap()),
                 ],
                 vec![
                     InlineKeyboardButton::url(
-                        "News".into(),
+                        "News",
                         Url::parse("https://t.me/roll_bot_news").unwrap(),
                     ),
                     InlineKeyboardButton::url(
-                        "Chat".into(),
+                        "Chat",
                         Url::parse("https://t.me/roll_bot_chat").unwrap(),
                     ),
                 ],

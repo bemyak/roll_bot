@@ -38,7 +38,7 @@ impl Entry for Document {
         let mut result = source.to_string();
 
         if let Ok(page) = page {
-            result.push_str(&format!(", page {}", page));
+            write!(result, ", page {}", page).ok()?;
         }
 
         if let Ok(srd) = srd {
@@ -176,14 +176,14 @@ fn format_entry(entry: &Bson) -> Option<String> {
                 let caption = entry.get_str("caption");
 
                 if let Ok(caption) = caption {
-                    table_result.push_str(&format!("<b>{}</b>\n", caption))
+                    writeln!(table_result, "<b>{}</b>", caption).ok()?
                 }
 
                 let mut table = Table::new();
                 table
                     .load_preset(ASCII_NO_BORDERS)
                     .set_content_arrangement(ContentArrangement::Dynamic)
-                    .set_table_width(35);
+                    .set_width(35);
 
                 if let Some(headers) = entry.get_array_of("colLabels", Bson::as_str) {
                     table.set_header(Row::from(
@@ -210,7 +210,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
                     }
                 });
 
-                table_result.push_str(&format!("<pre>\n{}</pre>", table));
+                write!(table_result, "<pre>\n{}</pre>", table).ok()?;
                 table_result
             }
             "cell" => {

@@ -10,40 +10,40 @@ lto   = "fat"
 panic = 'abort'
 
 [dependencies]
-comfy-table = "5.0.1"
+comfy-table = "6.1.0"
 ejdb = "0.4.1"
-futures = { version = "0.3.21", default-features = false }
-hyper = { version = "0.14.18", default-features = false, features = ["server"] }
+futures = { version = "0.3.24", default-features = false }
+hyper = { version = "0.14.20", default-features = false, features = ["server"] }
 hyper-proxy = { version = "0.9.1", default-features = false, features = ["rustls"] }
 hyper-rustls = "0.23.0"
 Inflector = "0.11.4"
 lazy_static = "1.4.0"
-log = { version = "0.4.16", default-features = false }
+log = { version = "0.4.17", default-features = false }
 ordinal = "0.3.2"
 peg = "0.8.0"
-percent-encoding = "2.1.0"
-prometheus = { version = "0.13.0", default-features = false, features = ["process"] }
+percent-encoding = "2.2.0"
+prometheus = { version = "0.13.2", default-features = false, features = ["process"] }
 rand = "0.8.5"
-regex = "1.5.5"
-reqwest = { version = "0.11.10", default-features = false, features = ["json", "rustls-tls"] }
-serde = "1.0.136"
-serde_json = { version = "1.0.79", default-features = false }
-simplelog = { version = "0.11.2", default-features = false }
+regex = "1.6.0"
+reqwest = { version = "0.11.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = "1.0.144"
+serde_json = { version = "1.0.85", default-features = false }
+simplelog = { version = "0.12.0", default-features = false }
 simsearch = "0.2.3"
-teloxide = { version = "0.8.0", default-features = false, features = [
+teloxide = { version = "0.10.1", default-features = false, features = [
     "rustls",
     "ctrlc_handler",
     "auto-send",
     "cache-me",
     "throttle",
 ] }
-thiserror = "1.0.30"
-tokio = { version = "1.17.0", default-features = false, features = ["rt-multi-thread", "macros"] }
-tokio-stream = "0.1.8"
+thiserror = "1.0.35"
+tokio = { version = "1.21.1", default-features = false, features = ["rt-multi-thread", "macros"] }
+tokio-stream = "0.1.10"
 zalgo = "0.2.0"
 
 [dev-dependencies]
-simplelog  = { version = "0.11.2", default-features = false, features = ["test"] }
+simplelog  = { version = "0.12.0", default-features = false, features = ["test"] }
 tokio-test = "0.4.2"
 
 [build-dependencies]

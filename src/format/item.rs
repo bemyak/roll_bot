@@ -4,6 +4,7 @@ use super::{
 };
 use crate::DB;
 use ejdb::bson::{Bson, Document};
+use std::fmt::Write;
 
 pub trait Item: Entry {
     // we need database to expand abbreviations
@@ -72,74 +73,68 @@ impl Item for Document {
             .filter_join(", ")
             .map(|s| s.capitalize());
         if let Some(meta) = meta {
-            s.push_str(&format!("\n<i>{}</i>", meta));
+            write!(s, "\n<i>{}</i>", meta).ok()?;
         }
 
         if let Some(attune) = self.get_attune() {
-            s.push_str(&format!("\n<i>{}</i>", attune.capitalize()));
+            write!(s, "\n<i>{}</i>", attune.capitalize()).ok()?;
         }
         if let Some(value) = self.get_value() {
-            s.push_str(&format!("\n\n<b>Cost</b>: {}", cost_to_string(value)));
+            write!(s, "\n\n<b>Cost</b>: {}", cost_to_string(value)).ok()?;
         }
         if let Some(carrying_capacity) = self.get_carrying_capacity() {
-            s.push_str(&format!(
-                "\n<b>Carrying capacity</b>: {} lb.",
-                carrying_capacity
-            ));
+            write!(s, "\n<b>Carrying capacity</b>: {} lb.", carrying_capacity).ok()?;
         }
         if let Some(ac) = self.get_ac() {
-            s.push_str(&format!("\n<b>AC</b>: {}", ac));
+            write!(s, "\n<b>AC</b>: {}", ac).ok()?;
         }
         if let Some(dmg1) = self.get_dmg1() {
-            s.push_str(&format!("\n<b>Damage</b>: {}", dmg1));
+            write!(s, "\n<b>Damage</b>: {}", dmg1).ok()?;
             if let Some(dmg_type) = self.get_dmg_type() {
-                s.push_str(&format!(" {}", dmg_type))
+                write!(s, " {}", dmg_type).ok()?
             }
         } else if let Some(dmg_type) = self.get_dmg_type() {
-            s.push_str(&format!("\n<b>Damage type</b>: {}", dmg_type))
+            write!(s, "\n<b>Damage type</b>: {}", dmg_type).ok()?
         }
         if let Some(speed) = self.get_speed() {
-            s.push_str(&format!("\n<b>Speed</b>: {}", speed));
+            write!(s, "\n<b>Speed</b>: {}", speed).ok()?;
         }
 
         if let Some(weight) = self.get_weight() {
-            s.push_str(&format!("\n<b>Weight</b>: {} lb", weight));
+            write!(s, "\n<b>Weight</b>: {} lb", weight).ok()?;
         }
 
         if let Some(ammo_type) = self.get_ammo_type() {
-            s.push_str(&format!("\n<b>Ammo Type</b>: {}", ammo_type));
+            write!(s, "\n<b>Ammo Type</b>: {}", ammo_type).ok()?;
         }
 
         if let Some(bonus_ac) = self.get_bonus_ac() {
-            s.push_str(&format!("\n<b>AC Bonus</b>: {}", bonus_ac));
+            write!(s, "\n<b>AC Bonus</b>: {}", bonus_ac).ok()?;
         }
         if let Some(bonus_weapon_attack) = self.get_bonus_weapon_attack() {
-            s.push_str(&format!("\n<b>Attack Bonus</b>: {}", bonus_weapon_attack));
+            write!(s, "\n<b>Attack Bonus</b>: {}", bonus_weapon_attack).ok()?;
         }
 
         if let Some(entries) = self.get_entries("entries") {
-            s.push_str(&format!("\n\n{}", &entries.join("\n")));
+            write!(s, "\n\n{}", &entries.join("\n")).ok()?;
         }
         if let Some(entries) = type_abbreviation.and_then(|t| t.get_entries("entries")) {
-            s.push_str(&format!("\n\n{}", &entries.join("\n")));
+            write!(s, "\n\n{}", &entries.join("\n")).ok()?;
         }
         if let Some(entries) = type_additional_abbreviation.and_then(|t| t.get_entries("entries")) {
-            s.push_str(&format!("\n\n{}", &entries.join("\n")));
+            write!(s, "\n\n{}", &entries.join("\n")).ok()?;
         }
         for t in property_abbreviations {
             if let Some(entries) = t.and_then(|t| t.get_entries("entries")) {
-                s.push_str(&format!("\n\n{}", &entries.join("\n")));
+                write!(s, "\n\n{}", &entries.join("\n")).ok()?;
             }
         }
 
         if let Some(loot_tables) = self.get_loot_tables() {
-            s.push_str(&format!(
-                "\n\n<b>Loot tables</b>: {}",
-                loot_tables.join(" ")
-            ));
+            write!(s, "\n\n<b>Loot tables</b>: {}", loot_tables.join(" ")).ok()?;
         }
         if let Some(source) = self.get_source() {
-            s.push_str(&format!("\n\n<i>{}</i>", source));
+            write!(s, "\n\n<i>{}</i>", source).ok()?;
         }
 
         Some(s)

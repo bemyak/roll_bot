@@ -1,5 +1,6 @@
 use std::clone::Clone;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
@@ -14,6 +15,7 @@ use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
 use simsearch::{SearchOptions, SimSearch};
 
+use crate::format::Entry;
 use crate::{
     collection::{CollectionName, COLLECTION_NAMES},
     get_unix_time,
@@ -77,12 +79,28 @@ impl DndDatabase {
         inner.timestamp = Instant::now();
         inner.db.drop_collection(collection, true)?;
         let coll = inner.db.collection(collection)?;
+        let mut name_cache: HashSet<String> = HashSet::new();
         arr.iter()
             .filter_map(|elem| elem.as_document())
+            .filter(|elem| elem.get_name().is_some())
             .for_each(|elem| {
-                let res = coll.save(elem);
-                if let Err(e) = res {
-                    error!("Failed to save document: {}", e)
+                let name = elem.get_name().unwrap();
+                if name_cache.contains(&name) {
+                    let source = elem.get_source().unwrap_or_else(|| "other".to_owned());
+                    let mut elem = elem.clone();
+                    let new_name = format!("{name} ({source})");
+                    elem.insert("name", new_name.clone());
+                    name_cache.insert(new_name);
+                    let res = coll.save(elem);
+                    if let Err(e) = res {
+                        error!("Failed to save document: {}", e)
+                    }
+                } else {
+                    name_cache.insert(name);
+                    let res = coll.save(elem);
+                    if let Err(e) = res {
+                        error!("Failed to save document: {}", e)
+                    }
                 }
             });
         coll.index("name").string(false).set()?;
