@@ -3,18 +3,18 @@ use teloxide::types::ChatKind;
 use crate::PROJECT_URL;
 
 pub fn chat_type_to_string(chat_type: &ChatKind) -> &'static str {
-    match chat_type {
-        ChatKind::Public(c) => match c.kind {
-            teloxide::types::PublicChatKind::Channel(_) => "channel",
-            teloxide::types::PublicChatKind::Group(_) => "group",
-            teloxide::types::PublicChatKind::Supergroup(_) => "supergroup",
-        },
-        ChatKind::Private(_) => "private",
-    }
+	match chat_type {
+		ChatKind::Public(c) => match c.kind {
+			teloxide::types::PublicChatKind::Channel(_) => "channel",
+			teloxide::types::PublicChatKind::Group(_) => "group",
+			teloxide::types::PublicChatKind::Supergroup(_) => "supergroup",
+		},
+		ChatKind::Private(_) => "private",
+	}
 }
 
 pub fn help_message() -> String {
-    format!("Hi! I'm a bot. The Dungeon Bot!
+	format!("Hi! I'm a bot. The Dungeon Bot!
 I can help you with your Dungeons&Dragons game (5th edition). I can:
 
 /roll (or /r) - roll a die. By default I'll use d20, but you can give me any number of dices! e.g.: <code>/roll 2d6 +5</code>
@@ -32,7 +32,7 @@ Suggestions and contributions are welcome.")
 }
 
 pub fn help_roll_message() -> &'static str {
-    r#"Consider an example:
+	r#"Consider an example:
 <pre>
 /roll 1d20 + 5 longsword
 </pre>
