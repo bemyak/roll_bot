@@ -1,6 +1,5 @@
 use std::clone::Clone;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
@@ -15,7 +14,6 @@ use ejdb::Result as EjdbResult;
 use serde_json::Value as JsonValue;
 use simsearch::{SearchOptions, SimSearch};
 
-use crate::format::Entry;
 use crate::{
 	collection::{CollectionName, COLLECTION_NAMES},
 	get_unix_time,
@@ -79,31 +77,28 @@ impl DndDatabase {
 		inner.timestamp = Instant::now();
 		inner.db.drop_collection(collection, true)?;
 		let coll = inner.db.collection(collection)?;
-		let mut name_cache: HashSet<String> = HashSet::new();
 		arr.iter()
 			.filter_map(|elem| elem.as_document())
-			.filter(|elem| elem.get_name().is_some())
 			.for_each(|elem| {
-				let name = elem.get_name().unwrap();
-				if name_cache.contains(&name) {
-					let source = elem.get_source().unwrap_or_else(|| "other".to_owned());
-					let mut elem = elem.clone();
-					let new_name = format!("{name} ({source})");
-					elem.insert("name", new_name.clone());
-					name_cache.insert(new_name);
-					let res = coll.save(elem);
-					if let Err(e) = res {
-						error!("Failed to save document: {}", e)
+				let name_source = elem.get_str("name").map(|name| {
+					elem.get_str("source")
+						.map(|source| format!("{name} ({source})"))
+						.unwrap_or_else(|_| name.to_owned())
+				});
+				let res = match name_source {
+					Ok(name_source) => {
+						let mut elem = elem.clone();
+						elem.insert("name_source", name_source);
+						coll.save(elem)
 					}
-				} else {
-					name_cache.insert(name);
-					let res = coll.save(elem);
-					if let Err(e) = res {
-						error!("Failed to save document: {}", e)
-					}
+					Err(_) => coll.save(elem),
+				};
+				if let Err(e) = res {
+					error!("Failed to save document: {}", e)
 				}
 			});
 		coll.index("name").string(false).set()?;
+		coll.index("name_source").string(false).set()?;
 		coll.index("abbreviation").string(true).set()?;
 		coll.index("appliesTo").string(true).set()?;
 
@@ -160,14 +155,14 @@ impl DndDatabase {
 	fn list_items(db: &Database, collection: &str) -> Result<Vec<String>, ejdb::Error> {
 		let coll = db.collection(collection)?;
 		let res = coll
-			.query(Q.empty(), QH.field("name").include())
+			.query(Q.empty(), QH.field("name_source").include())
 			.find()?
 			.collect::<EjdbResult<Vec<bson::Document>>>()?;
 		Ok(res
 			.iter()
-			.filter_map(|doc| doc.get("name"))
-			.filter_map(|doc| doc.as_str())
-			.map(|doc| doc.to_owned())
+			.filter_map(|doc| doc.get("name_source"))
+			.filter_map(|name| name.as_str())
+			.map(|name| name.to_owned())
 			.collect::<Vec<String>>())
 	}
 
@@ -178,8 +173,11 @@ impl DndDatabase {
 	) -> Result<Option<bson::Document>, ejdb::Error> {
 		let inner = self.inner.read().unwrap();
 		let coll = inner.db.collection(collection)?;
-		coll.query(Q.field("name").case_insensitive().eq(item_name), QH.empty())
-			.find_one()
+		coll.query(
+			Q.field("name_source").case_insensitive().eq(item_name),
+			QH.empty(),
+		)
+		.find_one()
 	}
 
 	pub fn find_one_by(

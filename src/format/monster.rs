@@ -117,6 +117,10 @@ impl Monster for Document {
 			}
 			write!(result, "\n{}", val).ok()?;
 		}
+
+		if let Some(source) = self.get_source() {
+			write!(result, "\n\n<i>{}</i>", &source).ok()?;
+		}
 		Some(result)
 	}
 }

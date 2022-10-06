@@ -31,14 +31,14 @@ serde_json = { version = "1.0.85", default-features = false }
 simplelog = { version = "0.12.0", default-features = false }
 simsearch = "0.2.3"
 teloxide = { version = "0.10.1", default-features = false, features = [
-    "rustls",
-    "ctrlc_handler",
-    "auto-send",
-    "cache-me",
-    "throttle",
+	"rustls",
+	"ctrlc_handler",
+	"auto-send",
+	"cache-me",
+	"throttle",
 ] }
-thiserror = "1.0.36"
-tokio = { version = "1.21.1", default-features = false, features = ["rt-multi-thread", "macros"] }
+thiserror = "1.0.37"
+tokio = { version = "1.21.2", default-features = false, features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.10"
 zalgo = "0.2.0"
 

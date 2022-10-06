@@ -323,7 +323,7 @@ async fn search_item(
 				)
 			} else {
 				format!(
-					"I don't have any {} with this exact name, but these look similar:",
+					"I've found these {} names:",
 					lookup_item.get_default_command()
 				)
 			};
