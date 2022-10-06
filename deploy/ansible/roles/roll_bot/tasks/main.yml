@@ -1,4 +1,9 @@
 ---
+- name: Update apt cache
+  apt:
+    update_cache: true
+  become: true
+
 - name: Install firewalld
   package:
     name: "{{ item }}"
