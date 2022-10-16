@@ -32,7 +32,7 @@ use crate::{
 	DB, DONATION_URL, PROJECT_URL,
 };
 
-type RollBot = AutoSend<Throttle<CacheMe<Bot>>>;
+type RollBot = Throttle<CacheMe<Bot>>;
 
 pub async fn start() {
 	let token = env::var("ROLL_BOT_TOKEN").unwrap_or_else(|_err| {
@@ -40,10 +40,7 @@ pub async fn start() {
 		std::process::exit(1)
 	});
 
-	let bot = Bot::new(token)
-		.cache_me()
-		.throttle(Limits::default())
-		.auto_send();
+	let bot = Bot::new(token).cache_me().throttle(Limits::default());
 
 	bot.set_my_commands(RollBotCommands::bot_commands())
 		.await
@@ -209,7 +206,7 @@ async fn process_callback_query(msg: CallbackQuery, bot: RollBot) -> Result<(), 
 			.expect("Should always be successful")
 			.user
 			.first_name;
-		let cmd = RollBotCommands::parse(&data, bot_name)?;
+		let cmd = RollBotCommands::parse(&data, &bot_name)?;
 
 		process_command(msg, bot, cmd).await
 	} else {

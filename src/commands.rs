@@ -63,10 +63,7 @@ impl BotCommands for RollBotCommands {
 		])
 	}
 
-	fn parse<N>(s: &str, bot_name: N) -> Result<Self, ParseError>
-	where
-		N: Into<String>,
-	{
+	fn parse(s: &str, bot_name: &str) -> Result<Self, ParseError> {
 		let mut words = s.splitn(2, ' ');
 		let mut splited = words
 			.next()
@@ -74,7 +71,6 @@ impl BotCommands for RollBotCommands {
 			.split('@');
 		let command_raw = splited.next().expect("First item will always be.");
 		let bot = splited.next();
-		let bot_name = bot_name.into();
 		match bot {
 			Some(name) if name == bot_name => {}
 			None => {}
