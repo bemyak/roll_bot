@@ -10,8 +10,8 @@ use teloxide::{
 	adaptors::{throttle::Limits, CacheMe, Throttle},
 	prelude::*,
 	types::{
-		ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, ReplyMarkup, Update,
-		User,
+		ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, MessageId, MessageKind, ParseMode,
+		ReplyMarkup, Update, User,
 	},
 	utils::command::{BotCommands, ParseError},
 	RequestError,
@@ -132,17 +132,22 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 	let response = match cmd {
 		RollBotCommands::Help(opts) => print_help(msg, bot, opts).await,
 		RollBotCommands::Roll(roll) => {
-			// Preserve markup from the previous message if any
 			let reply_markup = msg.reply_markup().cloned().unwrap_or_else(|| {
 				InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
 					"Reroll", &msg_text,
 				)]])
 			});
+
+			let reply_id = msg.id;
+
+			let roll = format!("<b>{} rolls:</b>\n{}", msg.from().unwrap().first_name, roll);
+
 			split_and_send(
 				msg,
 				bot,
 				&roll,
 				Some(ReplyMarkup::InlineKeyboard(reply_markup)),
+				Some(reply_id),
 			)
 			.await
 		}
@@ -204,9 +209,17 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
 	}
 }
 
-async fn process_callback_query(msg: CallbackQuery, bot: RollBot) -> Result<(), BotError> {
-	trace!("Got callback from @{}: {:?}", msg.from.first_name, msg.data);
-	if let (Some(data), Some(msg)) = (msg.data, msg.message) {
+async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Result<(), BotError> {
+	trace!(
+		"Got callback from @{}: {:?}",
+		callback_msg.from.first_name,
+		callback_msg.data
+	);
+	if let (Some(data), Some(mut msg)) = (callback_msg.data, callback_msg.message) {
+		if let MessageKind::Common(ref mut common_msg) = msg.kind {
+			common_msg.from = Some(callback_msg.from);
+		}
+
 		// Support for old buttons, remove after a while
 		let data = if data.starts_with('/') {
 			data
@@ -305,6 +318,7 @@ async fn search_item(
 				bot,
 				&reply_msg,
 				Some(ReplyMarkup::InlineKeyboard(keyboard)),
+				None,
 			)
 			.await
 		}
@@ -345,6 +359,7 @@ async fn search_item(
 				bot,
 				&reply_msg,
 				Some(ReplyMarkup::InlineKeyboard(keyboard)),
+				None,
 			)
 			.await
 		}
@@ -444,6 +459,7 @@ async fn split_and_send(
 	bot: RollBot,
 	text: &str,
 	keyboard: Option<ReplyMarkup>,
+	reply_msg_id: Option<MessageId>,
 ) -> Result<Message, BotError> {
 	if text.is_empty() {
 		return Err(BotError::NoReplyText(
@@ -466,6 +482,10 @@ async fn split_and_send(
 
 	if let Some(markup) = keyboard {
 		answer = answer.reply_markup(markup);
+	}
+
+	if let Some(reply_msg_id) = reply_msg_id {
+		answer = answer.reply_to_message_id(reply_msg_id);
 	}
 
 	answer.await.map_err(BotError::Request)
