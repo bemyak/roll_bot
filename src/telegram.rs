@@ -1,4 +1,4 @@
-use std::{borrow::Cow, env, time::Instant};
+use std::{borrow::Cow, env, time::Instant, vec};
 
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 use inflector::Inflector;
@@ -131,7 +131,21 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 	);
 	let response = match cmd {
 		RollBotCommands::Help(opts) => print_help(msg, bot, opts).await,
-		RollBotCommands::Roll(roll) => split_and_send(msg, bot, &roll, None).await,
+		RollBotCommands::Roll(roll) => {
+			// Preserve markup from the previous message if any
+			let reply_markup = msg.reply_markup().cloned().unwrap_or_else(|| {
+				InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+					"Reroll", &msg_text,
+				)]])
+			});
+			split_and_send(
+				msg,
+				bot,
+				&roll,
+				Some(ReplyMarkup::InlineKeyboard(reply_markup)),
+			)
+			.await
+		}
 		RollBotCommands::Stats => bot
 			.send_message(msg.chat.id, stats()?)
 			.parse_mode(ParseMode::Html)
