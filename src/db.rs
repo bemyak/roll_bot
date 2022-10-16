@@ -358,7 +358,7 @@ mod test {
 	#[test]
 	fn test_get_item() {
 		let db = init_with_data();
-		let i = db.get_item("spell", "Fireball").unwrap().unwrap();
+		let i = db.get_item("spell", "Fireball (PHB)").unwrap().unwrap();
 		info!("{:#?}", i);
 		info!("{}", i.format());
 	}
