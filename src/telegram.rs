@@ -11,7 +11,7 @@ use teloxide::{
 	prelude::*,
 	types::{
 		ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, MessageId, MessageKind, ParseMode,
-		ReplyMarkup, Update, User,
+		ReplyMarkup, Update,
 	},
 	utils::command::{BotCommands, ParseError},
 	RequestError,
@@ -125,8 +125,8 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 	trace!(
 		"Got message from @{}: {}",
 		msg.from()
-			.map(User::full_name)
-			.unwrap_or_else(|| "unknown".to_string()),
+			.map(|user| user.username.as_ref().unwrap_or(&user.first_name).as_str())
+			.unwrap_or("unknown"),
 		msg.text().unwrap_or_default()
 	);
 	let response = match cmd {
@@ -212,7 +212,11 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
 async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Result<(), BotError> {
 	trace!(
 		"Got callback from @{}: {:?}",
-		callback_msg.from.first_name,
+		callback_msg
+			.from
+			.username
+			.as_ref()
+			.unwrap_or(&callback_msg.from.first_name),
 		callback_msg.data
 	);
 	if let (Some(data), Some(mut msg)) = (callback_msg.data, callback_msg.message) {
@@ -232,7 +236,8 @@ async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Re
 			.await
 			.expect("Should always be successful")
 			.user
-			.first_name;
+			.username
+			.unwrap();
 		let cmd = RollBotCommands::parse(&data, &bot_name)?;
 
 		process_command(msg, bot, cmd).await
