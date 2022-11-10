@@ -13,14 +13,14 @@
     - python3-firewall
   become: true
 
-- name: Allow incoming connection from prometheus
-  firewalld:
-    source: "{{ monitor_private_ip }}/32"
-    zone: trusted
-    permanent: yes
-    immediate: yes
-    state: enabled
-  become: true
+# - name: Allow incoming connection from prometheus
+#   firewalld:
+#     source: "{{ monitor_private_ip }}/32"
+#     zone: trusted
+#     permanent: yes
+#     immediate: yes
+#     state: enabled
+#   become: true
 
 - name: Create user
   user:
