@@ -64,7 +64,7 @@ impl BotCommands for RollBotCommands {
 	}
 
 	fn parse(s: &str, bot_name: &str) -> Result<Self, ParseError> {
-		let mut words = s.splitn(2, ' ');
+		let mut words = s.splitn(2, |c| c == ' ' || c == '\n');
 		let mut splited = words
 			.next()
 			.expect("Command always starts with a slash (/)")
@@ -87,9 +87,9 @@ impl BotCommands for RollBotCommands {
 				HelpOptions::from_str(&args).map_err(|_| ParseError::UnknownCommand(cmd))?,
 			)),
 			"roll" | "r" => {
-				let res = roll_dice(&args)
-					.map_err(Box::new)
-					.map_err(|err| ParseError::IncorrectFormat(err))?;
+				let res = roll_dice(&args).unwrap_or_else(|err| err.to_string());
+				// .map_err(Box::new)
+				// .map_err(|err| ParseError::IncorrectFormat(err))?;
 				Ok(Self::Roll(res))
 			}
 			"stats" => Ok(Self::Stats),
@@ -112,4 +112,148 @@ impl BotCommands for RollBotCommands {
 			teloxide::types::BotCommand::new("help", "Show help"),
 		]
 	}
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Command<'a> {
+	cmd: &'a str,
+	arg: Option<&'a str>,
+}
+
+peg::parser! {
+	grammar command_parser() for str {
+		use peg::ParseLiteral;
+
+		rule _()
+		= [' ' | '\t']*
+
+		rule __()
+		= [' ' | '\t']+ / ['\n']*<1,>
+
+		rule text() -> &'input str
+		= _ text:$(!"/" !"\n" [_]+) _ {
+			text
+		}
+
+		pub rule command(bot_name: &str) -> Command<'input>
+		= _ "/" cmd:$([ 'a'..='z' | 'A'..='Z']+) ("@" ##parse_string_literal(bot_name))? arg:$(__ text())? {
+			Command {
+				cmd,
+				arg: arg.map(|arg| arg.trim()),
+			}
+		}
+
+		// rule not_command(bot_name: &str)
+		// = (!command(bot_name) [_])
+
+		// pub rule commands(bot_name: &str) -> Vec<Command<'input>>
+		// = not_command(bot_name)* c:(command(bot_name) ** (not_command(bot_name)*)) not_command(bot_name)* {
+		// 	c
+		// }
+
+		rule commands_skip(bot_name: &str) -> Command<'input>
+		= &(command(bot_name)) c:command(bot_name) {
+			c
+		}
+
+		pub rule commands(bot_name: &str) -> Vec<Command<'input>>
+		= commands_skip(bot_name)+
+	}
+}
+
+#[test]
+fn test_command_parser_rule() {
+	let bot_name = "roll_bot";
+	assert_eq!(
+		command_parser::command("/r", bot_name),
+		Ok(Command {
+			cmd: "r",
+			arg: None,
+		})
+	);
+
+	assert_eq!(
+		command_parser::command("/roll", bot_name),
+		Ok(Command {
+			cmd: "roll",
+			arg: None,
+		})
+	);
+
+	assert_eq!(
+		command_parser::command("/r test test test", bot_name),
+		Ok(Command {
+			cmd: "r",
+			arg: Some("test test test"),
+		})
+	);
+
+	assert_eq!(
+		command_parser::command("/r    test test test     ", bot_name),
+		Ok(Command {
+			cmd: "r",
+			arg: Some("test test test"),
+		})
+	);
+
+	assert_eq!(
+		command_parser::command("/r\ntest", bot_name),
+		Ok(Command {
+			cmd: "r",
+			arg: Some("test"),
+		})
+	);
+
+	// assert!(command_parser::command("/r\n\ntest", bot_name).is_err());
+
+	#[allow(clippy::invisible_characters)]
+	{
+		assert_eq!(
+			command_parser::command("/roll 1d20 5d30 ­ ⛤", bot_name),
+			Ok(Command {
+				cmd: "roll",
+				arg: Some("1d20 5d30 ­ ⛤"),
+			})
+		);
+	}
+}
+
+#[test]
+fn test_command_parser_rules() {
+	let bot_name = "roll_bot";
+	assert_eq!(
+		command_parser::commands("/r", bot_name),
+		Ok(vec![Command {
+			cmd: "r",
+			arg: None,
+		}])
+	);
+
+	assert_eq!(
+		command_parser::commands("/r /r", bot_name),
+		Ok(vec![
+			Command {
+				cmd: "r",
+				arg: None,
+			},
+			Command {
+				cmd: "r",
+				arg: None,
+			}
+		])
+	);
+
+	assert_eq!(
+		command_parser::commands("garbage text /r /r", bot_name),
+		Ok(vec![
+			Command {
+				cmd: "r",
+				arg: None,
+			},
+			Command {
+				cmd: "r",
+				arg: None,
+			}
+		])
+	);
 }

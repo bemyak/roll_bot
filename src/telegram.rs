@@ -93,6 +93,9 @@ pub enum BotError {
 
 	#[error("No reply text was produced")]
 	NoReplyText(String),
+
+	#[error("Bad callback")]
+	BadCallback,
 }
 
 async fn process_message(msg: Message, bot: RollBot) -> Result<(), BotError> {
@@ -134,7 +137,7 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 		RollBotCommands::Roll(roll) => {
 			let reply_markup = msg.reply_markup().cloned().unwrap_or_else(|| {
 				InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-					"Reroll", &msg_text,
+					"Reroll", "reroll",
 				)]])
 			});
 
@@ -175,6 +178,52 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 	Ok(())
 }
 
+async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Result<(), BotError> {
+	trace!(
+		"Got callback from @{}: {:?}",
+		callback_msg
+			.from
+			.username
+			.as_ref()
+			.unwrap_or(&callback_msg.from.first_name),
+		callback_msg.data
+	);
+
+	let (Some(mut data), Some(mut msg)) = (callback_msg.data, callback_msg.message) else {
+		return Err(BotError::BadCallback);
+	};
+
+	if let MessageKind::Common(ref mut common_msg) = msg.kind {
+		common_msg.from = Some(callback_msg.from);
+
+		if data == "reroll" {
+			let Some(reply) = std::mem::take(&mut common_msg.reply_to_message) else {
+				return Err(BotError::BadCallback)
+			};
+			data = reply.text().ok_or(BotError::BadCallback)?.to_owned();
+			msg = *reply;
+		}
+	}
+
+	// Support for old buttons, remove after a while
+	let data = if data.starts_with('/') {
+		data
+	} else {
+		"/".to_string() + &data
+	};
+
+	let bot_name = bot
+		.get_me()
+		.await
+		.expect("Should always be successful")
+		.user
+		.username
+		.unwrap();
+	let cmd = RollBotCommands::parse(&data, &bot_name)?;
+
+	process_command(msg, bot, cmd).await
+}
+
 async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Message, BotError> {
 	match opts {
 		HelpOptions::None => {
@@ -206,43 +255,6 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
 			.parse_mode(ParseMode::Html)
 			.await
 			.map_err(BotError::Request),
-	}
-}
-
-async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Result<(), BotError> {
-	trace!(
-		"Got callback from @{}: {:?}",
-		callback_msg
-			.from
-			.username
-			.as_ref()
-			.unwrap_or(&callback_msg.from.first_name),
-		callback_msg.data
-	);
-	if let (Some(data), Some(mut msg)) = (callback_msg.data, callback_msg.message) {
-		if let MessageKind::Common(ref mut common_msg) = msg.kind {
-			common_msg.from = Some(callback_msg.from);
-		}
-
-		// Support for old buttons, remove after a while
-		let data = if data.starts_with('/') {
-			data
-		} else {
-			"/".to_string() + &data
-		};
-
-		let bot_name = bot
-			.get_me()
-			.await
-			.expect("Should always be successful")
-			.user
-			.username
-			.unwrap();
-		let cmd = RollBotCommands::parse(&data, &bot_name)?;
-
-		process_command(msg, bot, cmd).await
-	} else {
-		Ok(())
 	}
 }
 

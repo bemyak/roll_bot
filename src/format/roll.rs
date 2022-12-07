@@ -3,6 +3,8 @@
 use std::fmt::Display;
 use std::{num::ParseIntError, str::FromStr};
 
+use peg::error::ParseError;
+use peg::str::LineCol;
 use rand::prelude::*;
 use thiserror::Error;
 
@@ -12,8 +14,11 @@ use crate::format::utils::zalgofy;
 pub enum DieFormatError {
 	#[error("Wow, that was a lot of text! Too bad I'm too lazy to read it :)")]
 	TooLongText,
-	#[error("Sorry, can't parse this")]
-	ParseError,
+
+	#[error("I don't have that many dices!")]
+	TooManyRolls,
+	#[error("{0}")]
+	ParseError(&'static str),
 }
 
 pub fn roll_dice(msg: &str) -> Result<String, DieFormatError> {
@@ -43,24 +48,40 @@ pub fn roll_results(msg: &str) -> Result<Vec<RollLine>, DieFormatError> {
 	if msg.len() > u16::MAX as usize {
 		return Err(DieFormatError::TooLongText);
 	}
-	roll_parser::expressions(msg)
-		.map_err(|_err| DieFormatError::ParseError)
+	let rolls = roll_parser::expressions(msg).map_err(DieFormatError::from)?;
+	if rolls.len() > 20 {
+		return Err(DieFormatError::TooManyRolls);
+	}
+	Ok(rolls
+		.into_iter()
 		.map(|rolls| {
-			if let [RollLine {
+			if let RollLine {
 				expression: Expression::Value(Operand::Num(num)),
 				comment,
-			}] = &*rolls
+			} = rolls
 			{
 				let substitution =
-					Expression::Value(Operand::Dice(Dice::new(DiceNum::Num(*num), 20)));
-				vec![RollLine {
+					Expression::Value(Operand::Dice(Dice::new(DiceNum::Num(num), 20)));
+				RollLine {
 					expression: substitution,
-					comment: comment.clone(),
-				}]
+					comment,
+				}
 			} else {
 				rolls
 			}
 		})
+		.collect())
+}
+
+impl From<ParseError<LineCol>> for DieFormatError {
+	fn from(err: ParseError<LineCol>) -> Self {
+		let e = err
+			.expected
+			.tokens()
+			.find(|s| s.starts_with("Nope, "))
+			.unwrap_or("Can't parse your message, sorry");
+		Self::ParseError(e)
+	}
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -223,7 +244,7 @@ impl Display for Expression {
 						write!(f, "{}", a)?;
 					}
 				}
-				write!(f, " \\* ")?;
+				write!(f, " * ")?;
 				match **b {
 					Expression::Plus(_, _) | Expression::Minus(_, _) => {
 						write!(f, "({})", b)?;
@@ -293,27 +314,10 @@ impl RollLine {
 				expression,
 				comment,
 			},
-			Some(comment) => {
-				Self {
-					expression,
-					comment: Some(comment),
-				}
-				// const CHARS_TO_ESCAPE: [char; 5] = ['\\', '`', '*', '_', '['];
-
-				// let mut escaped_comment = String::new();
-
-				// for c in comment.chars() {
-				//     if CHARS_TO_ESCAPE.contains(&c) {
-				//         escaped_comment.push('\\');
-				//     }
-				//     escaped_comment.push(c)
-				// }
-
-				// Self {
-				//     expression,
-				//     comment: Some(escaped_comment),
-				// }
-			}
+			Some(comment) => Self {
+				expression,
+				comment: Some(comment),
+			},
 		}
 	}
 }
@@ -324,41 +328,58 @@ peg::parser! {
 		rule _()
 		= [' ' | '\n' | '\t']*
 
-		rule space()
+		rule __()
 		= [' ' | '\n' | '\t']+
 
 		rule num() -> u16
-		= num:$(['0'..='9']+) {? num.parse().or(Err("The number is too big")) }
+		= num:$(['0'..='9']+)
+			{?
+				num.parse().or(Err("Nope, the number is too big")).and_then(|n| if n > 1000 {Err("Nope, the number is too big")} else {Ok(n)})
+			}
 
 		rule dice_num() -> DiceNum
-		= num:$(num() / "+" / "-") {? num.parse().or(Err("I don't have that many dices!")) }
+		= num:$(num() / "+" / "-")
+			{? num.parse().or(Err("Nope, I don't have that many dices!")).and_then(|n|
+				if let DiceNum::Num(num) = n {
+					if num > 20 {
+						Err("Nope, I don't have that many dices!")
+					} else{
+						Ok(n)
+					}
+				} else {
+					Ok(n)
+				})
+			}
 
 		rule dice() -> Dice
-		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num() { Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
+		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num()
+			{ Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
 
 		rule dice_operand() -> Operand
-		= dice:dice() { Operand::Dice(dice) }
+		= dice:dice()
+			{ Operand::Dice(dice) }
 
 		rule num_operand() -> Operand
-		= num:num() { Operand::Num(num) }
+		= num:num()
+			{ Operand::Num(num) }
 
 		pub rule operand() -> Operand
 		= dice_operand() / num_operand()
 
 		rule full_expression() -> Expression
-		= precedence!{
-			x:(@) "+" y:@ { Expression::Plus(Box::new(x), Box::new(y)) }
-			x:(@) "-" y:@ { Expression::Minus(Box::new(x), Box::new(y)) }
+		= precedence! {
+			x:(@) _ "+" _ y:@ { Expression::Plus(Box::new(x), Box::new(y)) }
+			x:(@) _ "-" _ y:@ { Expression::Minus(Box::new(x), Box::new(y)) }
 			--
-			x:(@) "*" y:@ { Expression::Multiply(Box::new(x), Box::new(y)) }
-			x:(@) "÷" y:@ { Expression::Divide(Box::new(x), Box::new(y)) }
+			x:(@) _ ("*" / "×") _ y:@ { Expression::Multiply(Box::new(x), Box::new(y)) }
+			x:(@) _ "÷" _ y:@ { Expression::Divide(Box::new(x), Box::new(y)) }
 			--
-			_ n:operand() _ { Expression::Value(n) }
+			n:operand() { Expression::Value(n) }
 			"(" _ e:full_expression() _ ")" { e }
 		}
 
 		rule short_adv() -> Expression
-		= _ sign:$['+' | '-' ] _ {
+		= sign:$['+' | '-' ] {
 			match sign {
 				"+" => Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
 				"-" => Expression::Value(Operand::dice(DiceNum::Disadvantage, 20)),
@@ -367,7 +388,7 @@ peg::parser! {
 		}
 
 		rule short_bonus() -> Expression
-		= _ sign:$['+' | '-' | '*' | '÷' ] _ num:num() _ {
+		= sign:$['+' | '-' | '*' | '×' | '÷' ] _ num:num() {
 			match sign {
 				"+" => Expression::Plus(
 						Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
@@ -377,7 +398,7 @@ peg::parser! {
 						Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
 						Box::new(Expression::Value(Operand::num(num)))
 					),
-				"*" => Expression::Multiply(
+				"*" | "×" => Expression::Multiply(
 						Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
 						Box::new(Expression::Value(Operand::num(num)))
 					),
@@ -394,38 +415,53 @@ peg::parser! {
 		= full_expression() / short_bonus() / short_adv()
 
 		rule comment() -> Option<String>
-		= c:$((!expression() [_])+) {
+		= !expression() c:$(([_] !expression())+) {
+			const TRIM: [char; 5] = ['\\', ',', ';', '.', ':'];
+			let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c) );
 			if c.is_empty() {
 				None
 			} else {
-				const TRIM: [char; 5] = ['\\', ',', ';', '.', ':'];
-				let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c) );
 				Some(c.to_owned())
 			}
 		}
 
 		rule expression_with_comment() -> RollLine
-		= e:expression() c:comment()? {
-			RollLine::new(e, c.flatten())
+		= e:expression() __ c:comment() {
+			RollLine::new(e, c)
 		}
 
-		rule only_comment() -> RollLine
+		rule only_comment() -> Vec<RollLine>
 		= c:comment() {
 			let expression = Expression::default();
-			RollLine::new(expression, c)
+			vec![RollLine::new(expression, c)]
+		}
+
+		rule expression_without_comment() -> RollLine
+		= e:expression() {
+			RollLine::new(e, None)
 		}
 
 		rule roll_line() -> RollLine
-		= expression_with_comment() / only_comment()
+		= expression_with_comment() / expression_without_comment()
 
 		rule nothing() -> Vec<RollLine>
 		= ![_] {
 			vec![RollLine::default()]
 		}
 
+		rule traced<T>(e: rule<T>) -> T
+		= &(input:$([_]*) {
+				#[cfg(feature = "trace")]
+				println!("[PEG_INPUT_START]\n{}\n[PEG_TRACE_START]", input);
+			})
+			e:e()? {?
+				#[cfg(feature = "trace")]
+				println!("[PEG_TRACE_STOP]");
+				e.ok_or("")
+	}
 
 		pub rule expressions() -> Vec<RollLine>
-		= roll_line()+ / nothing()
+		= traced(<roll_line() ++ __ / only_comment() / nothing()>)
 
 	}
 }
@@ -501,6 +537,8 @@ mod test {
 
 	#[test]
 	fn test_parse_expressions() {
+		assert!(roll_parser::expressions("10000000d5").is_err());
+
 		assert_eq!(
 			roll_parser::expressions("1d20 + 5"),
 			Ok(vec![RollLine {
@@ -561,10 +599,20 @@ mod test {
 	#[test]
 	fn test_comment() {
 		let expr = roll_parser::expressions("d20 + 5 to sneak the target");
-		assert!(expr.is_ok());
-		let expr = expr.unwrap();
-		let expr = expr.get(0).unwrap();
-		assert_eq!(expr.comment, Some("to sneak the target".to_owned()));
+		assert_eq!(
+			expr,
+			Ok(vec![RollLine {
+				expression: Expression::Plus(
+					Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+					Box::new(Expression::Value(Operand::Num(5)))
+				),
+				comment: Some("to sneak the target".to_owned())
+			}])
+		);
+		// assert!(expr.is_ok());
+		// let expr = expr.unwrap();
+		// let expr = expr.get(0).unwrap();
+		// assert_eq!(expr.comment, Some("to sneak the target".to_owned()));
 	}
 
 	#[test]
