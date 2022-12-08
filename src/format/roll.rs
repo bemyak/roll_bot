@@ -244,7 +244,7 @@ impl Display for Expression {
 						write!(f, "{}", a)?;
 					}
 				}
-				write!(f, " * ")?;
+				write!(f, " × ")?;
 				match **b {
 					Expression::Plus(_, _) | Expression::Minus(_, _) => {
 						write!(f, "({})", b)?;
@@ -334,15 +334,18 @@ peg::parser! {
 		rule num() -> u16
 		= num:$(['0'..='9']+)
 			{?
-				num.parse().or(Err("Nope, the number is too big")).and_then(|n| if n > 1000 {Err("Nope, the number is too big")} else {Ok(n)})
+				let err = "Nope, I don't have that kind of dice";
+				num.parse().or(Err(err)).and_then(|n| if n > 1000 {Err(err)} else {Ok(n)})
 			}
 
 		rule dice_num() -> DiceNum
 		= num:$(num() / "+" / "-")
-			{? num.parse().or(Err("Nope, I don't have that many dices!")).and_then(|n|
+			{?
+				let err = "Nope, I don't have that many dices!";
+				num.parse().or(Err(err)).and_then(|n|
 				if let DiceNum::Num(num) = n {
-					if num > 20 {
-						Err("Nope, I don't have that many dices!")
+					if num > 1000 {
+						Err(err)
 					} else{
 						Ok(n)
 					}
