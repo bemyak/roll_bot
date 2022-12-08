@@ -187,21 +187,28 @@ impl Display for Dice {
 				write!(f, "<code>{n}d{face_str}</code>")?;
 			}
 		};
-		let mut roll_results = self
-			.results
-			.iter()
-			.map(|roll| {
-				if *roll == 1 || *roll == face_int {
-					format!("<b>{roll}</b>")
-				} else {
-					format!("{roll}")
-				}
-			})
-			.collect::<Vec<_>>()
-			.join(",");
-		if self.face == 0 {
-			zalgofy(&mut roll_results);
-		}
+		let roll_results = if self.face == 0 {
+			let mut r = self
+				.results
+				.iter()
+				.map(|roll| roll.to_string())
+				.collect::<Vec<_>>()
+				.join(",");
+			zalgofy(&mut r);
+			r
+		} else {
+			self.results
+				.iter()
+				.map(|roll| {
+					if *roll == 1 || *roll == face_int {
+						format!("<b>{roll}</b>")
+					} else {
+						format!("{roll}")
+					}
+				})
+				.collect::<Vec<_>>()
+				.join(",")
+		};
 		write!(f, " [{}]", roll_results)
 	}
 }

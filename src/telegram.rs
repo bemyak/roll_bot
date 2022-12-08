@@ -145,8 +145,6 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 
 			let roll = format!("<b>{} rolls:</b>\n{}", msg.from().unwrap().first_name, roll);
 
-			// info!("{roll}");
-
 			split_and_send(
 				msg,
 				bot,
@@ -521,7 +519,7 @@ async fn split_and_send(
 	answer.await.map_err(BotError::Request)
 }
 
-fn get_closing_tag_len(v: &[Vec<u8>]) -> usize {
+fn get_closing_tag_len(v: &[String]) -> usize {
 	v.iter().map(|s| s.len() + 3).sum()
 }
 
@@ -533,54 +531,73 @@ fn split2(text: &str, max_len: usize) -> Vec<String> {
 	}
 
 	let mut result = Vec::new();
-	let mut part = Vec::new();
+	let mut part = String::new();
 	let mut state = State::Text;
-	let mut tags = Vec::new();
-	let mut tag = Vec::new();
-	let mut sep_pos = 0;
-	let mut sep_tag_len = 0;
+	let mut tags: Vec<String> = Vec::new();
+	let mut tag: String = String::new();
 
-	for b in text.bytes() {
-		if part.len() >= max_len - get_closing_tag_len(&tags[..sep_tag_len]) {
-			if sep_pos == 0 {
-				sep_tag_len = tags.len();
-				sep_pos = part.len();
-			}
-			let mut new_part: Vec<_> = part.drain(..sep_pos).collect();
+	// In priority highest => lowest
+	const SEPARATORS: [char; 2] = ['\n', ' '];
+	// len = SEPARATORS.len() + 1
+	// The last element is char split
+	let mut sep_poss = [0, 0, 0];
+	let mut sep_tags = [0, 0, 0];
+
+	for c in text.chars() {
+		if part.len() >= max_len {
+			let (sep_pos, sep_tag_len) = sep_poss
+				.iter()
+				.enumerate()
+				.find(|(_, &sep_pos)| sep_pos != 0)
+				.map(|(sep_i, sep_pos)| (*sep_pos, sep_tags[sep_i]))
+				.unwrap_or((part.len(), tags.len()));
+
+			let mut new_part: String = part.drain(..sep_pos).collect();
 			for tag in tags[..sep_tag_len].iter().rev() {
-				new_part.extend(format!("</{}>", String::from_utf8_lossy(tag)).as_bytes());
+				new_part.push_str(&format!("</{}>", tag));
 			}
-			result.push(unsafe { String::from_utf8_unchecked(new_part) });
-			sep_pos = 0;
+			result.push(new_part);
+			sep_poss = [0, 0, 0];
 
 			if !part.is_empty() {
 				part.remove(0);
 			}
 			let mut closing_tags = tags[..sep_tag_len]
 				.iter()
-				.map(|t| format!("<{}>", String::from_utf8_lossy(t)))
+				.map(|t| format!("<{t}>"))
 				.collect::<Vec<_>>()
-				.join("")
-				.into_bytes();
-			closing_tags.extend(&part);
+				.join("");
+			closing_tags.push_str(&part);
 			part = closing_tags;
 		}
 
 		match state {
-			State::Text => match b as char {
+			State::Text => match c {
 				'<' => {
 					state = State::OpenTag;
 				}
-				'\n' => {
-					if part.is_empty() {
+				c => {
+					if part.is_empty() && c.is_whitespace() {
 						continue;
 					}
-					sep_tag_len = tags.len();
-					sep_pos = part.len();
+
+					let sep = if let Some(sep_i) = SEPARATORS.iter().position(|&sep| sep == c) {
+						Some((sep_i, part.len()))
+					} else if c.is_ascii() {
+						Some((SEPARATORS.len(), part.len() + 1))
+					} else {
+						None
+					};
+
+					if let Some((sep_i, sep_pos)) = sep {
+						if sep_pos + get_closing_tag_len(&tags) <= max_len {
+							sep_tags[sep_i] = tags.len();
+							sep_poss[sep_i] = sep_pos;
+						}
+					}
 				}
-				_ => {}
 			},
-			State::OpenTag => match b as char {
+			State::OpenTag => match c {
 				'/' => {
 					if tag.is_empty() {
 						state = State::CloseTag
@@ -591,37 +608,35 @@ fn split2(text: &str, max_len: usize) -> Vec<String> {
 				}
 				'>' => {
 					tags.push(tag);
-					tag = Vec::new();
+					tag = String::new();
 					state = State::Text;
 				}
-				_ => tag.push(b),
+				_ => tag.push(c),
 			},
-			State::CloseTag => match b as char {
+			State::CloseTag => match c {
 				'>' => {
 					if Some(&tag) == tags.last() {
 						tags.pop();
-						if sep_tag_len != 0 {
-							sep_tag_len -= 1;
-						}
 					} else {
-						warn!(
-							"Unexpected closing tag: {} in\n{text}",
-							String::from_utf8_lossy(&tag)
-						)
+						warn!("Unexpected closing tag: {tag} in\n{text}")
 					}
-					tag = Vec::new();
+					tag = String::new();
 					state = State::Text;
 				}
-				_ => tag.push(b),
+				_ => tag.push(c),
 			},
 		}
-		part.push(b);
+		part.push(c);
 	}
 
-	let part_str = String::from_utf8_lossy(&part);
-
-	result.push(part_str.to_string());
+	result.push(part);
 	result
+}
+
+#[test]
+fn test_split2_simple0() {
+	let parts = split2("123", 3);
+	assert_eq!("123", parts[0]);
 }
 
 #[test]
@@ -639,6 +654,14 @@ fn test_split2_simple2() {
 }
 
 #[test]
+fn test_split2_simple3() {
+	let parts = split2("123\n456\n789", 3);
+	assert_eq!("123", parts[0]);
+	assert_eq!("456", parts[1]);
+	assert_eq!("789", parts[2]);
+}
+
+#[test]
 fn test_split2_tags1() {
 	let parts = split2("<b>1</b>23\n4<i>5</i>6", 17);
 	assert_eq!("<b>1</b>23", parts[0]);
@@ -652,12 +675,11 @@ fn test_split2_tags2() {
 	assert_eq!("<b>4<i>5</i>6</b>", parts[1]);
 }
 
-// #[test]
-// fn test_split2_tags3() {
-// 	#[allow(clippy::invisible_characters)]
-// 	let msg = r#"<b>­ rolls:</b>
-// 	<code>10d⛧</code> [<̠̤̞̤̠̙̤̝̥̗̖̿̿̍̑̅̅͒̐̄b̢̡̡̧̛̛̘̘̖̅͗̃̐̊̈́͊ͥͥͥ̔̊̓͋̉̄́̇̽̓̃͗͂̍͗̊̒̓̋͌ͣ̋̄͗͌͑̍͘͘>̗̗̄͋̆͒͒̈́͑͑̊̓̅͊͑̎̑̑̍̄͒1̴̧̢̧̨̛̤̥̟̖̗̘̥̘̠̤̝̈͗͂̆̐̑̇̍̐͒̑͂͑̄̎̀̀̕͘<̡̧̢̧̢̨̛̯̜̯̟̼̟̳̮̙͍̬̮̲̺̦̤̪͓̯̪͕̜̯̥̺̤̹͕̜̻̝̖̱̥̟̐ͣͣͥ̆͂̽̍̓̀́̑̎̊̎̔̈̍ͣ̉ͩ̅ͣ̉ͨ̑ͨ͗̽͐̏ͨ̿ͣͣ͐̄̒ͩ̊̃̀̕͘ͅͅ/̢̡̢̢̡̡̥̪͈̮͓̤̖͎̘̻̘͉̙̩͉̻̗̯͎͈̜̥͇͇̦̮̤̺̩̪̳̂͌͊̈͋̈͌͂̇̎͋͌̑̈́̆̑͊̎͗̈́͒͗͘̕̕ͅͅͅb̡̡̢̧̡̡̢̼̥͉̜͍͖̯͖͖͉̮̘͖̫̫̘̙̯̺̫̹̝̲̲͎̟̗̪̯̯̼̲̗̱̺̪̅ͤ̏̌ͧͣͮ͊̉ͯ̎ͫ̋̊͗ͨͦ̑̇̄̿ͥ̀ͨ̃ͧ̈́ͯ̊̐̈ͨͩ̾ͤͭ̽̔́̂̍ͫ̍̓̊ͮ̆̑̀ͅ>̛̛̱͈̺̦̙̯̩̫̳̯͇͉̥̪̜̖̱̙̪̻͇̺̞͈̩̬̱̭̦̭̲̇̇͗͗̎̄͂͂͒͂͑̊̑̊̅̇́̕,̡̛̯̠̩̹̻̞̟̞̻̙̰̼̦̼̹̬̯̲̹̟̘̦̰̫̩̘̜̮̅̊͒̊͗̐̈́̇̍̇̇͑͑͒͑̍̆́́̕̕ͅͅ9̡̡̧̦̯̬̞̯̤̠̺̥̘̮̹̩̜̱̲̯̤̳̥̬̭̝̥̘̎̄̎̀̀̕͘͘,̝̩̪̥̤̘̟̖̜̤̠̟̙̪̪̜̍̄̍̎̿8̛̛̫̮̦̬̖̥̥̤̞̺̫͈̬̪̮̘̘̙͎͓̱̩̪͓͈̗͓͍̦̼̯̖̞͒͂̑̅̂̐̅̄͊̑͒͒̍̅̊̿͒͂͋̐͒̊̎̈̃́͘̕̕ͅ,̡̧̨̛̘̘̪̳̙̱̩̺̯̱̜̪̺̰̘̳̮̪̥̯̜̫̩̤̲̐̍̍̄̆̑̐̐̅́̀̀̕͘̕1̧̧̢̡̛̗̗̐̂͋̽͐̍̔ͣ̋ͤͤ͂̀͐͒̌̋͒͂̎̓̂̑̆́ͣͤ͊̓ͥ̂̿͌̃͑̃́͘͘3̘̖̜̯̜̯̹̬̦̫̭̜̯̹̗̩̮̤̬̮̞̻̜̞̹̠̘̅̆͑̎̅̄̄̐̎͑̑̍̐̕ͅ,͔͖̖̳̞̟̩̭͕͉̳̳̘̖̳̺̖̳͔̬͕̯̭̤̝̜͖̺͉̭̫̲̺̭̠̥͓̆̊̇̎͒̿͑̄̐̿̑̄͑̊́́̕̕ͅͅ1̯̫̫̮̩̥̪̗̟̯̩̠̜̟̦̘̫̠̙̄ͧ̊̐͗ͣ͐ͤ́̃ͤ̒̎͂̽ͤ͌͂̉̇̑͌͒̊̌̆̿ͥ̂̈̅̑̿͑͑͑̇̽́̀́̀͘5͉̯̘̤̮̥̺̤̖̤͈̺̬̯͉̝̳̱̪̟̰̻̤̻̞̮̞̲̘̠̄̄̄̄̅̕̕ͅ,̪̹̮̳̠̗̯̱̟̹̤̖̤̩̟̤̝̖̘̟̱̘̘̭͗͊̎̍̓͒̆͒̄̑̎͑͗̑̄͊͊̈̓̄̆͋̍͋̕1̠̠̝̘̤̙̤̙̘̞̑͒͑̑̆̄̎͗̍͒̑͑̑7̛̛̙̘̗̥̝̙̞̤̠̤̞̿̇͒̈́͗̈̐̑̄͌͌̍͊̅͑̑͒̅̿̃̎̀,̮̳̝̬̞̹̗̫̖̬̤̮̹̟̗̘̭̤̙̜̗̤̲̙͂͑̍̍̇̓͒̐̓͗̐̄̇̐͂̎̀̕̕<̤̦̖̥̙̙̖̤̥̞̜̖̘͂̍̊̓̄̋̐͊̓͑̓̓̆ͥ̆́̈ͣ͊ͣ̀̿͑͗ͥ̀̆̃̅͐͌͊̏̓̑͑̕b̦̝̞̝̞̗̜̦̠̠̖̝̐̿̐͗͐̄͑̽̍́̐͑͗̑̄̊͂͑̿̓̒͌́̑̉̒͑̏̅̐̈̐̅̌̕>̞̖̖̥̞̠̠̞̞̤̝̅͊̈͋͌͐ͦ͋ͨ̿̐ͯ͑̈̂̋̒̊̈͗͐͊̍̌ͥͮͧ̿͒ͬ̓̌ͨ͗ͣ̏̀̾ͪ̍̈͋̋̇̐͋̈1̜̘̜̜̖̿̓̿̈́̊̍̐͊̑͒͋̎̇̓̐̅̅͊͂̍<̡̛̩̟̤̰̬̤̞̠̝̘̩̮̤̥̜̝̙̰̤̦͊͑̊̑̑͂̓͑̈̐̿̈̅̿̈́̄͋̇͌̅̈̀̀́͘̕/̞̟̗̟̞̞̖̜̌̿ͧ̈̐̓̈́ͪ̔̎̏̆̎ͦ͂̃ͤ̓̿̀̈̓ͪͪ͑͌ͣ͐̽͒ͧ͋̋͐̉ͥͪ̓̄̊ͪb̛̹̹̙̮̫̪̠̠̬̥̟̠̜̝̟̪̪̦̙̪̥̜̭̮̟̠͗͑̑̊̊̅̅̊͂̓̅͒̈͑̿̄̇̄̀̕>̴̢̨̡̛̟̘̠̙̟̖̗̦̩̟̖̥̝͋̍̀̊͊͋́̏͗̄̋̈̎͋̇̈͌͋͂̓̊͊̄̎͂̋́̍́́́̀́,̘̖̗̘̗̗̖̐̌̌̏̔͋̎̔̽̄͒̆̊͊̐̄͋̑̒̓̔́̓̍̿̀̐̊̏̀̀͒<̦̝̞̯̪̫̯̫̼̜̪̖̼̞̝̟̺̩̗̙̼̹̮̦̗̥̙̎̆͗̇̈͂̍̈́͋̆̃͋͒̎͌̇͋̿͗̿̈̕̕ͅb̴̧̡̨̧̛͍͈̯̰̩͇̭̻̼͖̝̲̪̪̹̭̻͙͖̫͎̬̥̗͙͉̭͙̼̻͎̰̮͇̭͂͐̑ͤ̅̂̅͌͐̄ͦͩ̿ͤ͐͌ͧ̈͐̿͋̀̂ͣ̂̒ͤ̎͌͊ͪͤ́̅͑͋̉̎̍́̓̀̀͘͘ͅͅͅ>̛̛̟̗̘̖̜̤̠̥̤̙̞̟ͤ̆ͤͩ̈́͗̅ͬͧ̓͊̒ͣ̉̃̒̓̎̏̿ͣ̽ͤ̀̐̈́ͤͣ͐͊͋̋̌͐͌̔̍ͥ̍ͦ͌͌̌1̛̛̝̤̥̠̩̦̗̝̘̞̗̖̩̝̽̓̓̿ͣ̋̽̍͗͋̑͌͊͐̋́̃̓̓͐̓͋͂̄̋͒̍̐͋̂̒̉́́͒́̕͘<̪̦̜̘̝̙̤̠̖̙̜̗̫̟̗̆͒͂͗̈́̄̅̇͗̎͌͒̈́̈͒̓̐̑̊͋̕/̛̦̘̜̙̫̠̜̥̪̝̪̝̟̠̝̅̑̄̆̍̅̊͒͑̑͒̆̈̅̕b̴̨̡̨̧̢̢̛̛̘̖̙̟̜̗̗̙̎̄̑̑̑̑́́>̡̧̖͒̄̑̀ͥͤ̒̈́̒̃ͬ̐̋ͨ̑͑ͣ̏͑͂̄͋̽ͬͭ̃ͫ̃̄̂ͩ͋ͮ̈̔ͫ̀ͥ̏ͥ̐ͥͤ͂̐́̀̀́̀̕,̡̧̛̦̥̫̝̤̪̠̜̤̠̞̩̠̦̠̓̍͋͂̓̂̒̋̐̉̅̅̔̿̂̎͋̅̀̊͑͌̀̋̌̏́̊̉̆̆̐́̆͑͑̀́́͘͘2̛̫̞̹͕͙͉̝̲͉̘̩̬͇̥̺̩͇͖̳̘̳̼͕̗̯̗̪̼̗̱̠̩͎͈̳̯̰͔̜̎̍̕,̛̫̩̫̝̟̙̩̘̙̞̫̗̘̫̠̥ͣ̐̒̌̄̌̉̑ͦ̓̋̈́̅ͣ̄̍͗͊̊͐̎ͩ͌̊̀̐̀̊ͤ̓̑̐͋ͣ̑̐ͣ͌͗̈̕1̴̢̡̨̢̧̤̦̭̥̥̭̝̝̙̗̫̹̪̭̭̺̜̰̟̜̞̹̙̞̬̌̿͊̓̿̉́̿̒́̄͊̌͗̍̆͐̿̄̽͂ͣ̽ͣ̎͗͌͒͑̇͌͗́̂̆̇̀́́̕2̘̝̘̖̘̙̙̎̎] = 79"#;
-// 	let parts = split2(msg, 4096);
-// 	assert_eq!(msg, parts[0]);
-// 	// assert_eq!("<b>4<i>5</i>6</b>", parts[1]);
-// }
+#[test]
+fn test_split2_tags3() {
+	let msg = r#"<b>\u{ad} rolls:</b>
+	<code>10d⛧</code> [<̠̤̞̤̠̙̤̝̥̗̖̿̿̍̑̅̅͒̐̄b̢̡̡̧̛̛̘̘̖̅͗̃̐̊̈́͊ͥͥͥ̔̊̓͋̉̄́̇̽̓̃͗͂̍͗̊̒̓̋͌ͣ̋̄͗͌͑̍͘͘>̗̗̄͋̆͒͒̈́͑͑̊̓̅͊͑̎̑̑̍̄͒1̴̧̢̧̨̛̤̥̟̖̗̘̥̘̠̤̝̈͗͂̆̐̑̇̍̐͒̑͂͑̄̎̀̀̕͘<̡̧̢̧̢̨̛̯̜̯̟̼̟̳̮̙͍̬̮̲̺̦̤̪͓̯̪͕̜̯̥̺̤̹͕̜̻̝̖̱̥̟̐ͣͣͥ̆͂̽̍̓̀́̑̎̊̎̔̈̍ͣ̉ͩ̅ͣ̉ͨ̑ͨ͗̽͐̏ͨ̿ͣͣ͐̄̒ͩ̊̃̀̕͘ͅͅ/̢̡̢̢̡̡̥̪͈̮͓̤̖͎̘̻̘͉̙̩͉̻̗̯͎͈̜̥͇͇̦̮̤̺̩̪̳̂͌͊̈͋̈͌͂̇̎͋͌̑̈́̆̑͊̎͗̈́͒͗͘̕̕ͅͅͅb̡̡̢̧̡̡̢̼̥͉̜͍͖̯͖͖͉̮̘͖̫̫̘̙̯̺̫̹̝̲̲͎̟̗̪̯̯̼̲̗̱̺̪̅ͤ̏̌ͧͣͮ͊̉ͯ̎ͫ̋̊͗ͨͦ̑̇̄̿ͥ̀ͨ̃ͧ̈́ͯ̊̐̈ͨͩ̾ͤͭ̽̔́̂̍ͫ̍̓̊ͮ̆̑̀ͅ>̛̛̱͈̺̦̙̯̩̫̳̯͇͉̥̪̜̖̱̙̪̻͇̺̞͈̩̬̱̭̦̭̲̇̇͗͗̎̄͂͂͒͂͑̊̑̊̅̇́̕,̡̛̯̠̩̹̻̞̟̞̻̙̰̼̦̼̹̬̯̲̹̟̘̦̰̫̩̘̜̮̅̊͒̊͗̐̈́̇̍̇̇͑͑͒͑̍̆́́̕̕ͅͅ9̡̡̧̦̯̬̞̯̤̠̺̥̘̮̹̩̜̱̲̯̤̳̥̬̭̝̥̘̎̄̎̀̀̕͘͘,̝̩̪̥̤̘̟̖̜̤̠̟̙̪̪̜̍̄̍̎̿8̛̛̫̮̦̬̖̥̥̤̞̺̫͈̬̪̮̘̘̙͎͓̱̩̪͓͈̗͓͍̦̼̯̖̞͒͂̑̅̂̐̅̄͊̑͒͒̍̅̊̿͒͂͋̐͒̊̎̈̃́͘̕̕ͅ,̡̧̨̛̘̘̪̳̙̱̩̺̯̱̜̪̺̰̘̳̮̪̥̯̜̫̩̤̲̐̍̍̄̆̑̐̐̅́̀̀̕͘̕1̧̧̢̡̛̗̗̐̂͋̽͐̍̔ͣ̋ͤͤ͂̀͐͒̌̋͒͂̎̓̂̑̆́ͣͤ͊̓ͥ̂̿͌̃͑̃́͘͘3̘̖̜̯̜̯̹̬̦̫̭̜̯̹̗̩̮̤̬̮̞̻̜̞̹̠̘̅̆͑̎̅̄̄̐̎͑̑̍̐̕ͅ,͔͖̖̳̞̟̩̭͕͉̳̳̘̖̳̺̖̳͔̬͕̯̭̤̝̜͖̺͉̭̫̲̺̭̠̥͓̆̊̇̎͒̿͑̄̐̿̑̄͑̊́́̕̕ͅͅ1̯̫̫̮̩̥̪̗̟̯̩̠̜̟̦̘̫̠̙̄ͧ̊̐͗ͣ͐ͤ́̃ͤ̒̎͂̽ͤ͌͂̉̇̑͌͒̊̌̆̿ͥ̂̈̅̑̿͑͑͑̇̽́̀́̀͘5͉̯̘̤̮̥̺̤̖̤͈̺̬̯͉̝̳̱̪̟̰̻̤̻̞̮̞̲̘̠̄̄̄̄̅̕̕ͅ,̪̹̮̳̠̗̯̱̟̹̤̖̤̩̟̤̝̖̘̟̱̘̘̭͗͊̎̍̓͒̆͒̄̑̎͑͗̑̄͊͊̈̓̄̆͋̍͋̕1̠̠̝̘̤̙̤̙̘̞̑͒͑̑̆̄̎͗̍͒̑͑̑7̛̛̙̘̗̥̝̙̞̤̠̤̞̿̇͒̈́͗̈̐̑̄͌͌̍͊̅͑̑͒̅̿̃̎̀,̮̳̝̬̞̹̗̫̖̬̤̮̹̟̗̘̭̤̙̜̗̤̲̙͂͑̍̍̇̓͒̐̓͗̐̄̇̐͂̎̀̕̕<̤̦̖̥̙̙̖̤̥̞̜̖̘͂̍̊̓̄̋̐͊̓͑̓̓̆ͥ̆́̈ͣ͊ͣ̀̿͑͗ͥ̀̆̃̅͐͌͊̏̓̑͑̕b̦̝̞̝̞̗̜̦̠̠̖̝̐̿̐͗͐̄͑̽̍́̐͑͗̑̄̊͂͑̿̓̒͌́̑̉̒͑̏̅̐̈̐̅̌̕>̞̖̖̥̞̠̠̞̞̤̝̅͊̈͋͌͐ͦ͋ͨ̿̐ͯ͑̈̂̋̒̊̈͗͐͊̍̌ͥͮͧ̿͒ͬ̓̌ͨ͗ͣ̏̀̾ͪ̍̈͋̋̇̐͋̈1̜̘̜̜̖̿̓̿̈́̊̍̐͊̑͒͋̎̇̓̐̅̅͊͂̍<̡̛̩̟̤̰̬̤̞̠̝̘̩̮̤̥̜̝̙̰̤̦͊͑̊̑̑͂̓͑̈̐̿̈̅̿̈́̄͋̇͌̅̈̀̀́͘̕/̞̟̗̟̞̞̖̜̌̿ͧ̈̐̓̈́ͪ̔̎̏̆̎ͦ͂̃ͤ̓̿̀̈̓ͪͪ͑͌ͣ͐̽͒ͧ͋̋͐̉ͥͪ̓̄̊ͪb̛̹̹̙̮̫̪̠̠̬̥̟̠̜̝̟̪̪̦̙̪̥̜̭̮̟̠͗͑̑̊̊̅̅̊͂̓̅͒̈͑̿̄̇̄̀̕>̴̢̨̡̛̟̘̠̙̟̖̗̦̩̟̖̥̝͋̍̀̊͊͋́̏͗̄̋̈̎͋̇̈͌͋͂̓̊͊̄̎͂̋́̍́́́̀́,̘̖̗̘̗̗̖̐̌̌̏̔͋̎̔̽̄͒̆̊͊̐̄͋̑̒̓̔́̓̍̿̀̐̊̏̀̀͒<̦̝̞̯̪̫̯̫̼̜̪̖̼̞̝̟̺̩̗̙̼̹̮̦̗̥̙̎̆͗̇̈͂̍̈́͋̆̃͋͒̎͌̇͋̿͗̿̈̕̕ͅb̴̧̡̨̧̛͍͈̯̰̩͇̭̻̼͖̝̲̪̪̹̭̻͙͖̫͎̬̥̗͙͉̭͙̼̻͎̰̮͇̭͂͐̑ͤ̅̂̅͌͐̄ͦͩ̿ͤ͐͌ͧ̈͐̿͋̀̂ͣ̂̒ͤ̎͌͊ͪͤ́̅͑͋̉̎̍́̓̀̀͘͘ͅͅͅ>̛̛̟̗̘̖̜̤̠̥̤̙̞̟ͤ̆ͤͩ̈́͗̅ͬͧ̓͊̒ͣ̉̃̒̓̎̏̿ͣ̽ͤ̀̐̈́ͤͣ͐͊͋̋̌͐͌̔̍ͥ̍ͦ͌͌̌1̛̛̝̤̥̠̩̦̗̝̘̞̗̖̩̝̽̓̓̿ͣ̋̽̍͗͋̑͌͊͐̋́̃̓̓͐̓͋͂̄̋͒̍̐͋̂̒̉́́͒́̕͘<̪̦̜̘̝̙̤̠̖̙̜̗̫̟̗̆͒͂͗̈́̄̅̇͗̎͌͒̈́̈͒̓̐̑̊͋̕/̛̦̘̜̙̫̠̜̥̪̝̪̝̟̠̝̅̑̄̆̍̅̊͒͑̑͒̆̈̅̕b̴̨̡̨̧̢̢̛̛̘̖̙̟̜̗̗̙̎̄̑̑̑̑́́>̡̧̖͒̄̑̀ͥͤ̒̈́̒̃ͬ̐̋ͨ̑͑ͣ̏͑͂̄͋̽ͬͭ̃ͫ̃̄̂ͩ͋ͮ̈̔ͫ̀ͥ̏ͥ̐ͥͤ͂̐́̀̀́̀̕,̡̧̛̦̥̫̝̤̪̠̜̤̠̞̩̠̦̠̓̍͋͂̓̂̒̋̐̉̅̅̔̿̂̎͋̅̀̊͑͌̀̋̌̏́̊̉̆̆̐́̆͑͑̀́́͘͘2̛̫̞̹͕͙͉̝̲͉̘̩̬͇̥̺̩͇͖̳̘̳̼͕̗̯̗̪̼̗̱̠̩͎͈̳̯̰͔̜̎̍̕,̛̫̩̫̝̟̙̩̘̙̞̫̗̘̫̠̥ͣ̐̒̌̄̌̉̑ͦ̓̋̈́̅ͣ̄̍͗͊̊͐̎ͩ͌̊̀̐̀̊ͤ̓̑̐͋ͣ̑̐ͣ͌͗̈̕1̴̢̡̨̢̧̤̦̭̥̥̭̝̝̙̗̫̹̪̭̭̺̜̰̟̜̞̹̙̞̬̌̿͊̓̿̉́̿̒́̄͊̌͗̍̆͐̿̄̽͂ͣ̽ͣ̎͗͌͒͑̇͌͗́̂̆̇̀́́̕2̘̝̘̖̘̙̙̎̎] = 79"#;
+	let parts = split2(msg, 4096);
+	assert_eq!("<b>\u{ad} rolls:</b>", parts[0]);
+	assert_eq!(3, parts.len());
+}
