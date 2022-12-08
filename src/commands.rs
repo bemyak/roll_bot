@@ -99,7 +99,6 @@ impl BotCommands for RollBotCommands {
 				}
 			}
 		}
-		.or_else(|err| Ok(Self::Error(err.to_string())))
 	}
 
 	fn bot_commands() -> Vec<teloxide::types::BotCommand> {
