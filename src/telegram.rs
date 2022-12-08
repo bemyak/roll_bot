@@ -162,6 +162,12 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 		RollBotCommands::Query((collection, item)) => {
 			search_item(msg, bot, collection, &item).await
 		}
+		RollBotCommands::Error(err) => bot
+			.send_message(msg.chat.id, err)
+			.reply_to_message_id(msg.id)
+			.parse_mode(ParseMode::Html)
+			.await
+			.map_err(BotError::Request),
 	};
 
 	DB.log_message(

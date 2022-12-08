@@ -12,6 +12,7 @@ pub enum RollBotCommands {
 	Roll(String),
 	Stats,
 	Query((&'static Collection, String)),
+	Error(String),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -86,12 +87,9 @@ impl BotCommands for RollBotCommands {
 			"help" | "h" | "about" | "start" => Ok(RollBotCommands::Help(
 				HelpOptions::from_str(&args).map_err(|_| ParseError::UnknownCommand(cmd))?,
 			)),
-			"roll" | "r" => {
-				let res = roll_dice(&args).unwrap_or_else(|err| err.to_string());
-				// .map_err(Box::new)
-				// .map_err(|err| ParseError::IncorrectFormat(err))?;
-				Ok(Self::Roll(res))
-			}
+			"roll" | "r" => roll_dice(&args)
+				.map(Self::Roll)
+				.or_else(|err| Ok(Self::Error(err.to_string()))),
 			"stats" => Ok(Self::Stats),
 			_ => {
 				if let Some(item) = COMMANDS.get(cmd.as_str()) {
@@ -101,6 +99,7 @@ impl BotCommands for RollBotCommands {
 				}
 			}
 		}
+		.or_else(|err| Ok(Self::Error(err.to_string())))
 	}
 
 	fn bot_commands() -> Vec<teloxide::types::BotCommand> {

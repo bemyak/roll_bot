@@ -78,7 +78,7 @@ impl From<ParseError<LineCol>> for DieFormatError {
 		let e = err
 			.expected
 			.tokens()
-			.find(|s| s.starts_with("Nope, "))
+			.find(|s| s.starts_with("Nope") || s.starts_with("Wow"))
 			.unwrap_or("Can't parse your message, sorry");
 		Self::ParseError(e)
 	}
@@ -333,30 +333,26 @@ peg::parser! {
 
 		rule num() -> u16
 		= num:$(['0'..='9']+)
-			{?
-				let err = "Nope, I don't have that kind of dice";
-				num.parse().or(Err(err)).and_then(|n| if n > 1000 {Err(err)} else {Ok(n)})
-			}
+			{? num.parse().or(Err("Wow, that's a big number!")) }
 
 		rule dice_num() -> DiceNum
 		= num:$(num() / "+" / "-")
-			{?
-				let err = "Nope, I don't have that many dices!";
-				num.parse().or(Err(err)).and_then(|n|
-				if let DiceNum::Num(num) = n {
-					if num > 1000 {
-						Err(err)
-					} else{
-						Ok(n)
-					}
-				} else {
-					Ok(n)
-				})
-			}
+			{? num.parse().or(Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")) }
 
 		rule dice() -> Dice
 		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num()
-			{ Dice::new(num.unwrap_or(DiceNum::Num(1)), face) }
+			{?
+				let dice_num = num.unwrap_or(DiceNum::Num(1));
+				if let DiceNum::Num(n) = dice_num {
+					if n > 200 {
+						return Err("Nope, I don't have that many dices!")
+					}
+				}
+				if face > 1000 {
+					return Err("Nope, I don't have that kind of dice!")
+				}
+				Ok(Dice::new(dice_num, face))
+			}
 
 		rule dice_operand() -> Operand
 		= dice:dice()
