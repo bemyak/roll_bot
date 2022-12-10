@@ -15,7 +15,7 @@ ejdb = "0.4.1"
 futures = { version = "0.3.25", default-features = false }
 hyper = { version = "0.14.23", default-features = false, features = ["server"] }
 hyper-proxy = { version = "0.9.1", default-features = false, features = ["rustls"] }
-hyper-rustls = "0.23.1"
+hyper-rustls = "0.23.2"
 Inflector = "0.11.4"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", default-features = false }
@@ -41,6 +41,7 @@ thiserror = "1.0.37"
 tokio = { version = "1.23.0", default-features = false, features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.11"
 zalgo = "0.2.0"
+itertools = "0.10.5"
 
 [dev-dependencies]
 simplelog  = { version = "0.12.0", default-features = false, features = ["test"] }
@@ -51,4 +52,4 @@ schemafy_lib = "0.6.0"
 
 [features]
 regenerate_types = []
-trace = ["peg/trace"]
+trace            = ["peg/trace"]

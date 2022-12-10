@@ -2,6 +2,7 @@ use std::{borrow::Cow, env, time::Instant, vec};
 
 use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
 use inflector::Inflector;
+use itertools::Itertools;
 use regex::{Captures, Regex};
 use reqwest::Url;
 use thiserror::Error;
@@ -126,13 +127,16 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 	let chat_kind = msg.chat.kind.clone();
 	let msg_text = msg.text().unwrap_or_default().to_string();
 
-	trace!(
-		"Got message from @{}: {}",
-		msg.from()
-			.map(|user| user.username.as_ref().unwrap_or(&user.first_name).as_str())
-			.unwrap_or("unknown"),
-		msg.text().unwrap_or_default()
-	);
+	if msg.via_bot != bot.get_me().await.ok().map(|bot| bot.user) {
+		trace!(
+			"Got message from @{}: {}",
+			msg.from()
+				.map(|user| user.username.as_ref().unwrap_or(&user.first_name).as_str())
+				.unwrap_or("unknown"),
+			msg.text().unwrap_or_default()
+		);
+	}
+
 	let response = match cmd {
 		RollBotCommands::Help(opts) => print_help(msg, bot, opts).await,
 		RollBotCommands::Roll(roll) => {
@@ -209,6 +213,7 @@ async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Re
 		return Err(BotError::BadCallback);
 	};
 
+	// Reroll special message
 	if let MessageKind::Common(ref mut common_msg) = msg.kind {
 		common_msg.from = Some(callback_msg.from);
 
@@ -225,18 +230,17 @@ async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Re
 	let data = if data.starts_with('/') {
 		data
 	} else {
-		"/".to_string() + &data
+		format!("/{data}")
 	};
 
-	let bot_name = bot
+	let bot_user = bot
 		.get_me()
 		.await
 		.expect("Should always be successful")
-		.user
-		.username
-		.unwrap();
-	let cmd = RollBotCommands::parse(&data, &bot_name)?;
+		.user;
+	let cmd = RollBotCommands::parse(&data, bot_user.username.as_ref().unwrap())?;
 
+	msg.via_bot = Some(bot_user);
 	process_command(msg, bot, cmd).await
 }
 
@@ -337,6 +341,13 @@ async fn search_item(
 		Some(mut item) => {
 			let mut keyboard = InlineKeyboardMarkup::default();
 			replace_links(&mut item, &mut keyboard);
+			// Deduplicate and sort keys
+			keyboard.inline_keyboard = keyboard
+				.inline_keyboard
+				.into_iter()
+				.unique()
+				.sorted_by(|row1, row2| row1[0].text.cmp(&row2[0].text))
+				.collect();
 			let mut reply_msg = match lookup_item.type_ {
 				crate::collection::CollectionType::Item => item.format_item(),
 				crate::collection::CollectionType::Monster => item.format_monster(),
@@ -435,19 +446,57 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
 
 	let result: Cow<str> = LINK_REGEX.replace_all(&text_copy, |caps: &Captures| {
 		let cmd = caps.name("cmd").unwrap().as_str();
-		let arg1 = caps
+		let name = caps
 			.name("arg1")
 			.map(|cap| cap.as_str())
 			.unwrap_or_default();
-		let arg2 = caps.name("arg2").map(|cap| cap.as_str());
-		let arg3 = caps.name("arg3").map(|cap| cap.as_str());
-		let arg4 = caps.name("arg4").map(|cap| cap.as_str());
+		let source = caps.name("arg2").map(|cap| cap.as_str());
+		let display_text = caps.name("arg3").map(|cap| cap.as_str());
+		let other = caps.name("arg4").map(|cap| cap.as_str());
 
-		let nice_str = arg4.or(arg3).or(arg2).unwrap_or(arg1);
+		let nice_str = other.or(display_text).unwrap_or(name);
+
+		let source = source.or(match cmd {
+			"spell" => Some("PHB"),
+			"item" => Some("DMG"),
+			"class" => Some("PHB"),
+			"subclass" => Some("PHB"),
+			"creature" => Some("MM"),
+			"condition" => Some("PHB"),
+			"disease" => Some("DMG"),
+			"status" => Some("DMG"),
+			"background" => Some("PHB"),
+			"race" => Some("PHB"),
+			"optfeature" => Some("PHB"),
+			"reward" => Some("DMG"),
+			"feat" => Some("PHB"),
+			"psionic" => Some("UATheMysticClass"),
+			"object" => Some("DMG"),
+			"cult" => Some("MTF"),
+			"boon" => Some("MTF"),
+			"trap" => Some("DMG"),
+			"hazard" => Some("DMG"),
+			"deity" => Some("PHB"),
+			"variantrule" => Some("DMG"),
+			"vehicle" => Some("GoS"),
+			"vehupgrade" => Some("GoS"),
+			"action" => Some("PHB"),
+			"classFeature" => Some("PHB"),
+			"subclassFeature" => Some("PHB"),
+			"table" => Some("DMG"),
+			"language" => Some("PHB"),
+			"charoption" => Some("MOT"),
+			"recipe" => Some("HF"),
+			"itemEntry" => Some("DMG"),
+			"quickref" => Some("PHB"),
+			"skill" => Some("PHB"),
+			"sense" => Some("PHB"),
+			_ => None,
+		});
 
 		match cmd {
 			"i" => format!("• {}", nice_str),
-			"hit" => format!("+{}", arg1),
+			"hit" => format!("+{}", name),
 			"h" => match caps.name("bonus") {
 				Some(bonus) => format!("<b>{}</b>", bonus.as_str()),
 				None => "".to_owned(),
@@ -455,24 +504,31 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
 			"atk" => "".to_owned(),
 			"scaledamage" => format!("<b>{}</b>", nice_str),
 			"dice" | "damage" => {
-				let roll_results = roll_results(arg1).unwrap();
+				let roll_results = roll_results(name).unwrap();
 				let roll = roll_results.get(0).unwrap();
-				format!("<b>{}</b> <code>[{}]</code> ", arg1, roll.expression.calc())
+				format!("<b>{}</b> <code>[{}]</code> ", name, roll.expression.calc())
 			}
 			"recharge" => {
-				if arg1.is_empty() {
+				if name.is_empty() {
 					"(Recharge 6)".to_string()
 				} else {
-					format!("(Recharge {}-6)", arg1)
+					format!("(Recharge {}-6)", name)
 				}
 			}
 			_ => {
-				let nice_str = arg4.or(arg3).unwrap_or(arg1);
+				let nice_str = other.or(display_text).unwrap_or(name);
 				if let Some(item) = COMMANDS.get(cmd) {
 					let mut kb = keyboard.clone();
 					kb = kb.append_row(vec![InlineKeyboardButton::callback(
 						format!("{}: {}", item.get_default_command(), nice_str),
-						format!("{} {}", item.get_default_command(), arg1),
+						format!(
+							"{} {}{}",
+							item.get_default_command(),
+							name,
+							source
+								.map(|source| format!(" ({source})"))
+								.unwrap_or_default()
+						),
 					)]);
 					*keyboard = kb;
 				}
