@@ -28,6 +28,7 @@ use crate::{
 		roll::{roll_results, DieFormatError},
 		spell::Spell,
 		telegram::chat_type_to_string,
+		utils::HtmlEscapable,
 	},
 	DB, DONATION_URL, PROJECT_URL,
 };
@@ -143,7 +144,11 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 
 			let reply_id = msg.id;
 
-			let roll = format!("<b>{} rolls:</b>\n{}", msg.from().unwrap().first_name, roll);
+			let roll = format!(
+				"<b>{} rolls:</b>\n{}",
+				msg.from().unwrap().first_name.escape_html(),
+				roll
+			);
 
 			split_and_send(
 				msg,
@@ -162,7 +167,7 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 		RollBotCommands::Query((collection, item)) => {
 			search_item(msg, bot, collection, &item).await
 		}
-		RollBotCommands::Error(err) => bot
+		RollBotCommands::Echo(err) | RollBotCommands::Error(err) => bot
 			.send_message(msg.chat.id, err)
 			.reply_to_message_id(msg.id)
 			.parse_mode(ParseMode::Html)

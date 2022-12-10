@@ -33,3 +33,15 @@ pub fn zalgofy(text: &mut String) {
 	zalgo.gen(text.clone(), &mut buf, &OPTIONS);
 	*text = buf;
 }
+
+pub trait HtmlEscapable {
+	fn escape_html(&self) -> String;
+}
+
+impl HtmlEscapable for str {
+	fn escape_html(&self) -> String {
+		self.replace('&', "&amp;")
+			.replace('<', "&lt;")
+			.replace('>', "&gt;")
+	}
+}
