@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 async fn run() -> Result<(), Box<dyn Error>> {
 	let log_config = simplelog::ConfigBuilder::new()
 		.add_filter_allow_str("roll_bot")
-		.add_filter_allow_str("teloxide")
+		// .add_filter_allow_str("teloxide")
 		.build();
 	let log_level = if env::var("ROLL_BOT_USE_TEST_DB").is_ok() {
 		simplelog::LevelFilter::Debug
