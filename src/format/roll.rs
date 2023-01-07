@@ -10,6 +10,8 @@ use thiserror::Error;
 
 use crate::format::utils::zalgofy;
 
+const PENTAGRAM: &str = "⛧";
+
 #[derive(Error, Debug)]
 pub enum DieFormatError {
 	#[error("Wow, that was a lot of text! Too bad I'm too lazy to read it :)")]
@@ -60,8 +62,7 @@ pub fn roll_results(msg: &str) -> Result<Vec<RollLine>, DieFormatError> {
 				comment,
 			} = rolls
 			{
-				let substitution =
-					Expression::Value(Operand::Dice(Dice::new(DiceNum::Num(num), 20)));
+				let substitution = Expression::Value(Operand::Dice(Dice::from_nums(num, 20)));
 				RollLine {
 					expression: substitution,
 					comment,
@@ -88,16 +89,6 @@ impl From<ParseError<LineCol>> for DieFormatError {
 pub enum Operand {
 	Dice(Dice),
 	Num(u16),
-}
-
-impl Operand {
-	pub fn dice(num: DiceNum, face: u16) -> Operand {
-		Operand::Dice(Dice::new(num, face))
-	}
-
-	pub fn num(num: u16) -> Operand {
-		Operand::Num(num)
-	}
 }
 
 impl Display for Operand {
@@ -132,22 +123,79 @@ impl FromStr for DiceNum {
 	}
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum DiceFace {
+	Num(u16),
+	Percentile,
+	Zalgo,
+}
+
+impl FromStr for DiceFace {
+	type Err = ParseIntError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(match s {
+			"%" => DiceFace::Percentile,
+			PENTAGRAM | "0" => DiceFace::Zalgo,
+			_ => DiceFace::Num(s.parse()?),
+		})
+	}
+}
+
+impl Display for DiceFace {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			DiceFace::Num(num) => write!(f, "{num}"),
+			DiceFace::Percentile => write!(f, "%"),
+			DiceFace::Zalgo => write!(f, "{PENTAGRAM}"),
+		}
+	}
+}
+
+impl DiceFace {
+	fn get_value(&self) -> u16 {
+		match self {
+			DiceFace::Num(num) => *num,
+			DiceFace::Percentile => 100,
+			DiceFace::Zalgo => 20,
+		}
+	}
+}
+
+// #[derive(Debug, PartialEq, Eq)]
+// enum DiceSelector {
+// 	None,
+// 	KeepHigh(u16),
+// 	KeelLow(u16),
+// 	DropHigh(u16),
+// 	DropLow(u16),
+// }
+
+// impl Default for DiceSelector {
+// 	fn default() -> Self {
+// 		Self::None
+// 	}
+// }
+
 #[derive(Debug)]
 pub struct Dice {
 	pub num: DiceNum,
-	pub face: u16,
+	pub face: DiceFace,
+	// pub selector: DiceSelector,
 	results: Vec<u16>,
 	total: u64,
 }
 
 impl Dice {
-	fn new(num: DiceNum, face: u16) -> Self {
+	pub fn new(num: DiceNum, face: DiceFace) -> Self {
 		let rolls_num = match num {
 			DiceNum::Num(n) => n,
 			_ => 2,
 		};
+
+		let face_num = face.get_value();
 		let results: Vec<_> = (0..rolls_num)
-			.map(|_| rand::thread_rng().gen_range(0..if face == 0 { 20 } else { face }) + 1)
+			.map(|_| rand::thread_rng().gen_range(0..face_num + 1))
 			.collect();
 		let results_clone = results.clone();
 		let total = match num {
@@ -166,16 +214,30 @@ impl Dice {
 			total,
 		}
 	}
+
+	pub fn from_nums(num: u16, face: u16) -> Self {
+		Self::new(DiceNum::Num(num), DiceFace::Num(face))
+	}
+
+	pub fn new_adv() -> Self {
+		Self::new(DiceNum::Advantage, DiceFace::Num(20))
+	}
+
+	pub fn new_disadv() -> Self {
+		Self::new(DiceNum::Disadvantage, DiceFace::Num(20))
+	}
+}
+
+impl Default for Dice {
+	fn default() -> Self {
+		Self::new(DiceNum::Num(1), DiceFace::Num(20))
+	}
 }
 
 impl Display for Dice {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let face_str = if self.face == 0 {
-			"⛧".to_owned()
-		} else {
-			self.face.to_string()
-		};
-		let face_int = if self.face == 0 { 20 } else { self.face };
+		let face_str = self.face.to_string();
+		let face_int = self.face.get_value();
 		match self.num {
 			DiceNum::Advantage => {
 				write!(f, "<code>d{face_str} with advantage</code>")?;
@@ -187,7 +249,7 @@ impl Display for Dice {
 				write!(f, "<code>{n}d{face_str}</code>")?;
 			}
 		};
-		let roll_results = if self.face == 0 {
+		let roll_results = if matches!(self.face, DiceFace::Zalgo) {
 			let mut r = self
 				.results
 				.iter()
@@ -288,7 +350,7 @@ impl Display for Expression {
 
 impl Default for Expression {
 	fn default() -> Self {
-		Self::Value(Operand::dice(DiceNum::Num(1), 20))
+		Self::Value(Operand::Dice(Dice::default()))
 	}
 }
 
@@ -346,8 +408,12 @@ peg::parser! {
 		= num:$(num() / "+" / "-")
 			{? num.parse().or(Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")) }
 
+		rule dice_face() -> DiceFace
+		= num:$(num() / "%" / "⛧")
+			{? num.parse().or(Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")) }
+
 		rule dice() -> Dice
-		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:num()
+		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:dice_face()
 			{?
 				let dice_num = num.unwrap_or(DiceNum::Num(1));
 				if let DiceNum::Num(n) = dice_num {
@@ -355,7 +421,7 @@ peg::parser! {
 						return Err("Nope, I don't have that many dices!")
 					}
 				}
-				if face > 1000 {
+				if face.get_value() > 1000 {
 					return Err("Nope, I don't have that kind of dice!")
 				}
 				Ok(Dice::new(dice_num, face))
@@ -387,31 +453,21 @@ peg::parser! {
 		rule short_adv() -> Expression
 		= sign:$['+' | '-' ] {
 			match sign {
-				"+" => Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
-				"-" => Expression::Value(Operand::dice(DiceNum::Disadvantage, 20)),
+				"+" => Expression::Value(Operand::Dice(Dice::new_adv())),
+				"-" => Expression::Value(Operand::Dice(Dice::new_disadv())),
 				_ => unreachable!()
 			}
 		}
 
 		rule short_bonus() -> Expression
 		= sign:$['+' | '-' | '*' | '×' | '÷' ] _ num:num() {
+			let v1 = Box::new(Expression::Value(Operand::Dice(Dice::default())));
+			let v2 = Box::new(Expression::Value(Operand::Num(num)));
 			match sign {
-				"+" => Expression::Plus(
-						Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-						Box::new(Expression::Value(Operand::num(num)))
-					),
-				"-" => Expression::Minus(
-						Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-						Box::new(Expression::Value(Operand::num(num)))
-					),
-				"*" | "×" => Expression::Multiply(
-						Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-						Box::new(Expression::Value(Operand::num(num)))
-					),
-				"÷" => Expression::Divide(
-						Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
-						Box::new(Expression::Value(Operand::num(num)))
-					),
+				"+" => Expression::Plus(v1,v2),
+				"-" => Expression::Minus(v1,v2),
+				"*" | "×" => Expression::Multiply(v1,v2),
+				"÷" => Expression::Divide(v1,v2),
 				_ =>
 					unreachable!("Unknown sign {}", sign)
 			}
@@ -481,12 +537,12 @@ mod test {
 	fn test_parse_operand() {
 		assert_eq!(
 			roll_parser::operand("1d20"),
-			Ok(Operand::dice(DiceNum::Num(1), 20))
+			Ok(Operand::Dice(Dice::default()))
 		);
-		assert_eq!(roll_parser::operand("5"), Ok(Operand::num(5)));
+		assert_eq!(roll_parser::operand("5"), Ok(Operand::Num(5)));
 		assert_eq!(
 			roll_parser::operand("+d20"),
-			Ok(Operand::dice(DiceNum::Advantage, 20))
+			Ok(Operand::Dice(Dice::new_adv()))
 		);
 	}
 
@@ -495,28 +551,28 @@ mod test {
 		assert_eq!(
 			roll_parser::expression("1d20 + 5"),
 			Ok(Expression::Plus(
-				Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+				Box::new(Expression::Value(Operand::Dice(Dice::default()))),
 				Box::new(Expression::Value(Operand::Num(5)))
 			))
 		);
 		assert_eq!(
 			roll_parser::expression("+d20"),
-			Ok(Expression::Value(Operand::dice(DiceNum::Advantage, 20)))
+			Ok(Expression::Value(Operand::Dice(Dice::new_adv())))
 		);
 		assert_eq!(
 			roll_parser::expression("d20"),
-			Ok(Expression::Value(Operand::dice(DiceNum::Num(1), 20)))
+			Ok(Expression::Value(Operand::Dice(Dice::default())))
 		);
 		assert_eq!(
 			roll_parser::expression("d4"),
-			Ok(Expression::Value(Operand::dice(DiceNum::Num(1), 4)))
+			Ok(Expression::Value(Operand::Dice(Dice::from_nums(1, 4))))
 		);
 		assert_eq!(
 			roll_parser::expression("d6+d4+3"),
 			Ok(Expression::Plus(
 				Box::new(Expression::Plus(
-					Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 6))),
-					Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 4)))
+					Box::new(Expression::Value(Operand::Dice(Dice::from_nums(1, 6)))),
+					Box::new(Expression::Value(Operand::Dice(Dice::from_nums(1, 4))))
 				)),
 				Box::new(Expression::Value(Operand::Num(3)))
 			))
@@ -524,18 +580,18 @@ mod test {
 		assert_eq!(
 			roll_parser::expression("+d20+5"),
 			Ok(Expression::Plus(
-				Box::new(Expression::Value(Operand::dice(DiceNum::Advantage, 20))),
+				Box::new(Expression::Value(Operand::Dice(Dice::new_adv()))),
 				Box::new(Expression::Value(Operand::Num(5)))
 			))
 		);
 		assert_eq!(
 			roll_parser::expression("+"),
-			Ok(Expression::Value(Operand::dice(DiceNum::Advantage, 20)))
+			Ok(Expression::Value(Operand::Dice(Dice::new_adv())))
 		);
 		assert_eq!(
 			roll_parser::expression("+5"),
 			Ok(Expression::Plus(
-				Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+				Box::new(Expression::Value(Operand::Dice(Dice::default()))),
 				Box::new(Expression::Value(Operand::Num(5)))
 			))
 		);
@@ -549,7 +605,7 @@ mod test {
 			roll_parser::expressions("1d20 + 5"),
 			Ok(vec![RollLine {
 				expression: Expression::Plus(
-					Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+					Box::new(Expression::Value(Operand::Dice(Dice::default()))),
 					Box::new(Expression::Value(Operand::Num(5)))
 				),
 				comment: None,
@@ -560,11 +616,11 @@ mod test {
 			roll_parser::expressions("1d20 1d6"),
 			Ok(vec![
 				RollLine {
-					expression: Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
+					expression: Expression::Value(Operand::Dice(Dice::default())),
 					comment: None,
 				},
 				RollLine {
-					expression: Expression::Value(Operand::dice(DiceNum::Num(1), 6)),
+					expression: Expression::Value(Operand::Dice(Dice::from_nums(1, 6))),
 					comment: None,
 				}
 			])
@@ -574,15 +630,15 @@ mod test {
 			roll_parser::expressions("+ + +"),
 			Ok(vec![
 				RollLine {
-					expression: Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+					expression: Expression::Value(Operand::Dice(Dice::new_adv())),
 					comment: None,
 				},
 				RollLine {
-					expression: Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+					expression: Expression::Value(Operand::Dice(Dice::new_adv())),
 					comment: None,
 				},
 				RollLine {
-					expression: Expression::Value(Operand::dice(DiceNum::Advantage, 20)),
+					expression: Expression::Value(Operand::Dice(Dice::new_adv())),
 					comment: None,
 				},
 			])
@@ -609,7 +665,7 @@ mod test {
 			expr,
 			Ok(vec![RollLine {
 				expression: Expression::Plus(
-					Box::new(Expression::Value(Operand::dice(DiceNum::Num(1), 20))),
+					Box::new(Expression::Value(Operand::Dice(Dice::default()))),
 					Box::new(Expression::Value(Operand::Num(5)))
 				),
 				comment: Some("to sneak the target".to_owned())
@@ -631,11 +687,11 @@ mod test {
 			expr,
 			vec![
 				RollLine {
-					expression: Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
+					expression: Expression::Value(Operand::Dice(Dice::default())),
 					comment: Some("to sneak the target".to_owned()),
 				},
 				RollLine {
-					expression: Expression::Value(Operand::dice(DiceNum::Num(2), 6)),
+					expression: Expression::Value(Operand::Dice(Dice::from_nums(2, 6))),
 					comment: Some("damage".to_owned()),
 				}
 			]
@@ -650,7 +706,7 @@ mod test {
 		assert_eq!(
 			expr,
 			vec![RollLine {
-				expression: Expression::Value(Operand::dice(DiceNum::Num(1), 20)),
+				expression: Expression::Value(Operand::Dice(Dice::default())),
 				comment: Some("to sneak the target".to_owned()),
 			}]
 		);
