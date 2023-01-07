@@ -62,7 +62,7 @@ pub fn roll_results(msg: &str) -> Result<Vec<RollLine>, DieFormatError> {
 				comment,
 			} = rolls
 			{
-				let substitution = Expression::Value(Operand::Dice(Dice::from_nums(num, 20)));
+				let substitution = Expression::Value(Operand::Dice(Dice::new_num(num, 20)));
 				RollLine {
 					expression: substitution,
 					comment,
@@ -162,75 +162,79 @@ impl DiceFace {
 	}
 }
 
-// #[derive(Debug, PartialEq, Eq)]
-// enum DiceSelector {
-// 	None,
-// 	KeepHigh(u16),
-// 	KeelLow(u16),
-// 	DropHigh(u16),
-// 	DropLow(u16),
-// }
+#[derive(Debug, PartialEq, Eq)]
+pub enum DiceSelector {
+	KeepHigh(u16),
+	KeepLow(u16),
+	DropHigh(u16),
+	DropLow(u16),
+}
 
-// impl Default for DiceSelector {
-// 	fn default() -> Self {
-// 		Self::None
-// 	}
-// }
+impl Display for DiceSelector {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			DiceSelector::KeepHigh(n) => write!(f, "kh{n}"),
+			DiceSelector::KeepLow(n) => write!(f, "kl{n}"),
+			DiceSelector::DropHigh(n) => write!(f, "dh{n}"),
+			DiceSelector::DropLow(n) => write!(f, "dl{n}"),
+		}
+	}
+}
 
 #[derive(Debug)]
 pub struct Dice {
-	pub num: DiceNum,
+	pub num: u16,
 	pub face: DiceFace,
-	// pub selector: DiceSelector,
+	pub selectors: Vec<DiceSelector>,
 	results: Vec<u16>,
 	total: u64,
 }
 
 impl Dice {
-	pub fn new(num: DiceNum, face: DiceFace) -> Self {
-		let rolls_num = match num {
-			DiceNum::Num(n) => n,
-			_ => 2,
-		};
-
+	pub fn new(num: u16, face: DiceFace, selectors: Vec<DiceSelector>) -> Self {
 		let face_num = face.get_value();
-		let results: Vec<_> = (0..rolls_num)
-			.map(|_| rand::thread_rng().gen_range(0..face_num + 1))
+		let mut results: Vec<u16> = (0..num)
+			.map(|_| rand::thread_rng().gen_range(0..face_num) + 1)
 			.collect();
-		let results_clone = results.clone();
-		let total = match num {
-			DiceNum::Advantage => results_clone.into_iter().max().unwrap_or(0) as u64,
-			DiceNum::Disadvantage => results_clone.into_iter().min().unwrap_or(0) as u64,
-			DiceNum::Num(_) => {
-				let mut sum = 0;
-				results_clone.into_iter().for_each(|r| sum += r as u64);
-				sum
-			}
-		};
+		results.sort();
+		for selector in &selectors {
+			let len = results.len();
+			results = match selector {
+				DiceSelector::KeepHigh(n) => results.into_iter().skip(len - *n as usize).collect(),
+				DiceSelector::KeepLow(n) => results.into_iter().take(*n as usize).collect(),
+				DiceSelector::DropHigh(n) => results.into_iter().take(len - *n as usize).collect(),
+				DiceSelector::DropLow(n) => results.into_iter().skip(*n as usize).collect(),
+			};
+		}
+		let mut total = 0;
+		for r in &results {
+			total += *r as u64;
+		}
 		Self {
 			num,
 			face,
+			selectors,
 			results,
 			total,
 		}
 	}
 
-	pub fn from_nums(num: u16, face: u16) -> Self {
-		Self::new(DiceNum::Num(num), DiceFace::Num(face))
+	pub fn new_num(num: u16, face: u16) -> Self {
+		Self::new(num, DiceFace::Num(face), vec![])
 	}
 
 	pub fn new_adv() -> Self {
-		Self::new(DiceNum::Advantage, DiceFace::Num(20))
+		Self::new(2, DiceFace::Num(20), vec![DiceSelector::KeepHigh(1)])
 	}
 
 	pub fn new_disadv() -> Self {
-		Self::new(DiceNum::Disadvantage, DiceFace::Num(20))
+		Self::new(2, DiceFace::Num(20), vec![DiceSelector::KeepLow(1)])
 	}
 }
 
 impl Default for Dice {
 	fn default() -> Self {
-		Self::new(DiceNum::Num(1), DiceFace::Num(20))
+		Self::new(1, DiceFace::Num(20), vec![])
 	}
 }
 
@@ -238,17 +242,24 @@ impl Display for Dice {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let face_str = self.face.to_string();
 		let face_int = self.face.get_value();
-		match self.num {
-			DiceNum::Advantage => {
-				write!(f, "<code>d{face_str} with advantage</code>")?;
+		match (self.num, self.selectors.as_slice()) {
+			(num, []) => write!(f, "<code>{num}d{face_str}</code>")?,
+			(2, [DiceSelector::KeepHigh(1)]) => {
+				write!(f, "<code>d{face_str} with advantage</code>")?
 			}
-			DiceNum::Disadvantage => {
-				write!(f, "<code>d{face_str} with disadvantage</code>")?;
+			(2, [DiceSelector::KeepLow(1)]) => {
+				write!(f, "<code>d{face_str} with disadvantage</code>")?
 			}
-			DiceNum::Num(n) => {
-				write!(f, "<code>{n}d{face_str}</code>")?;
+
+			(num, selectors) => {
+				write!(f, "<code>{num}d{face_str}")?;
+				for selector in selectors {
+					write!(f, "{}", selector)?;
+				}
+				write!(f, "</code>")?;
 			}
 		};
+
 		let roll_results = if matches!(self.face, DiceFace::Zalgo) {
 			let mut r = self
 				.results
@@ -412,19 +423,43 @@ peg::parser! {
 		= num:$(num() / "%" / "⛧")
 			{? num.parse().or(Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")) }
 
+		rule dice_selector() -> DiceSelector
+		= op:$("kh" / "kl" / "dh" / "dl") num:num()
+			{
+				match op {
+					"kh" => DiceSelector::KeepHigh(num),
+					"kl" => DiceSelector::KeepLow(num),
+					"dh" => DiceSelector::DropHigh(num),
+					"dl" => DiceSelector::DropLow(num),
+					_ => unreachable!()
+				}
+			}
+
+		rule dice_selector_short() -> DiceSelector
+		= op:$("H"/ "L")
+			{
+				match op {
+					"H" => DiceSelector::KeepHigh(1),
+					"L" => DiceSelector::KeepLow(1),
+					_ => unreachable!(),
+				}
+			}
+
 		rule dice() -> Dice
-		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:dice_face()
+		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:dice_face() selectors:(dice_selector() / dice_selector_short())*
 			{?
 				let dice_num = num.unwrap_or(DiceNum::Num(1));
-				if let DiceNum::Num(n) = dice_num {
-					if n > 200 {
-						return Err("Nope, I don't have that many dices!")
-					}
-				}
+				let (dice_num, selectors) = match (dice_num, selectors.as_slice()) {
+					(DiceNum::Advantage, []) => (2, vec![DiceSelector::KeepHigh(1)]),
+					(DiceNum::Disadvantage, []) => (2, vec![DiceSelector::KeepLow(1)]),
+					(DiceNum::Num(200..), _) => return Err("Nope, I don't have that many dices!"),
+					(DiceNum::Num(num), _) => (num, selectors),
+					_ => return Err("Nope, that doesn't make any sense"),
+				};
 				if face.get_value() > 1000 {
 					return Err("Nope, I don't have that kind of dice!")
 				}
-				Ok(Dice::new(dice_num, face))
+				Ok(Dice::new(dice_num, face, selectors))
 			}
 
 		rule dice_operand() -> Operand
@@ -547,6 +582,14 @@ mod test {
 	}
 
 	#[test]
+	fn test_full_notation() {
+		assert_eq!(
+			roll_parser::operand("1d20kh4kl3dh2dl1"),
+			Ok(Operand::Dice(Dice::default()))
+		);
+	}
+
+	#[test]
 	fn test_parse_expression() {
 		assert_eq!(
 			roll_parser::expression("1d20 + 5"),
@@ -565,14 +608,14 @@ mod test {
 		);
 		assert_eq!(
 			roll_parser::expression("d4"),
-			Ok(Expression::Value(Operand::Dice(Dice::from_nums(1, 4))))
+			Ok(Expression::Value(Operand::Dice(Dice::new_num(1, 4))))
 		);
 		assert_eq!(
 			roll_parser::expression("d6+d4+3"),
 			Ok(Expression::Plus(
 				Box::new(Expression::Plus(
-					Box::new(Expression::Value(Operand::Dice(Dice::from_nums(1, 6)))),
-					Box::new(Expression::Value(Operand::Dice(Dice::from_nums(1, 4))))
+					Box::new(Expression::Value(Operand::Dice(Dice::new_num(1, 6)))),
+					Box::new(Expression::Value(Operand::Dice(Dice::new_num(1, 4))))
 				)),
 				Box::new(Expression::Value(Operand::Num(3)))
 			))
@@ -620,7 +663,7 @@ mod test {
 					comment: None,
 				},
 				RollLine {
-					expression: Expression::Value(Operand::Dice(Dice::from_nums(1, 6))),
+					expression: Expression::Value(Operand::Dice(Dice::new_num(1, 6))),
 					comment: None,
 				}
 			])
@@ -691,7 +734,7 @@ mod test {
 					comment: Some("to sneak the target".to_owned()),
 				},
 				RollLine {
-					expression: Expression::Value(Operand::Dice(Dice::from_nums(2, 6))),
+					expression: Expression::Value(Operand::Dice(Dice::new_num(2, 6))),
 					comment: Some("damage".to_owned()),
 				}
 			]
