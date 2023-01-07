@@ -197,6 +197,7 @@ impl Dice {
 			.map(|_| rand::thread_rng().gen_range(0..face_num) + 1)
 			.collect();
 		results.sort();
+		let results_full = results.clone();
 		for selector in &selectors {
 			let len = results.len();
 			results = match selector {
@@ -214,7 +215,7 @@ impl Dice {
 			num,
 			face,
 			selectors,
-			results,
+			results: if num < 10 { results_full } else { results },
 			total,
 		}
 	}
