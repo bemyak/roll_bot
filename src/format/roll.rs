@@ -215,7 +215,7 @@ impl Dice {
 			num,
 			face,
 			selectors,
-			results: if num < 10 { results_full } else { results },
+			results: if num == 2 { results_full } else { results },
 			total,
 		}
 	}
