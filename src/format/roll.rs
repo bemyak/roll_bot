@@ -127,6 +127,7 @@ impl FromStr for DiceNum {
 pub enum DiceFace {
 	Num(u16),
 	Percentile,
+	Fudge,
 	Zalgo,
 }
 
@@ -136,6 +137,7 @@ impl FromStr for DiceFace {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(match s {
 			"%" => DiceFace::Percentile,
+			"F" => DiceFace::Fudge,
 			PENTAGRAM | "0" => DiceFace::Zalgo,
 			_ => DiceFace::Num(s.parse()?),
 		})
@@ -147,15 +149,23 @@ impl Display for DiceFace {
 		match self {
 			DiceFace::Num(num) => write!(f, "{num}"),
 			DiceFace::Percentile => write!(f, "%"),
+			DiceFace::Fudge => write!(f, "F"),
 			DiceFace::Zalgo => write!(f, "{PENTAGRAM}"),
 		}
 	}
 }
 
 impl DiceFace {
-	fn get_value(&self) -> u16 {
+	fn get_min_value(&self) -> i32 {
 		match self {
-			DiceFace::Num(num) => *num,
+			DiceFace::Fudge => -1,
+			_ => 1,
+		}
+	}
+	fn get_max_value(&self) -> i32 {
+		match self {
+			DiceFace::Num(num) => *num as i32,
+			DiceFace::Fudge => 1,
 			DiceFace::Percentile => 100,
 			DiceFace::Zalgo => 20,
 		}
@@ -186,15 +196,14 @@ pub struct Dice {
 	pub num: u16,
 	pub face: DiceFace,
 	pub selectors: Vec<DiceSelector>,
-	results: Vec<u16>,
-	total: u64,
+	results: Vec<i32>,
+	total: i64,
 }
 
 impl Dice {
 	pub fn new(num: u16, face: DiceFace, selectors: Vec<DiceSelector>) -> Self {
-		let face_num = face.get_value();
-		let mut results: Vec<u16> = (0..num)
-			.map(|_| rand::thread_rng().gen_range(0..face_num) + 1)
+		let mut results: Vec<i32> = (0..num)
+			.map(|_| rand::thread_rng().gen_range(face.get_min_value()..face.get_max_value() + 1))
 			.collect();
 		results.sort();
 		let results_full = results.clone();
@@ -212,7 +221,7 @@ impl Dice {
 		}
 		let mut total = 0;
 		for r in &results {
-			total += *r as u64;
+			total += *r as i64;
 		}
 		Self {
 			num,
@@ -245,7 +254,7 @@ impl Default for Dice {
 impl Display for Dice {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let face_str = self.face.to_string();
-		let face_int = self.face.get_value();
+		let face_int = self.face.get_min_value();
 		match (self.num, self.selectors.as_slice()) {
 			(num, []) => write!(f, "<code>{num}d{face_str}</code>")?,
 			(2, [DiceSelector::KeepHigh(1)]) => {
@@ -370,17 +379,17 @@ impl Default for Expression {
 }
 
 impl Expression {
-	pub fn calc(&self) -> u64 {
+	pub fn calc(&self) -> i64 {
 		match self {
 			Expression::Value(operand) => match operand {
 				Operand::Dice(d) => d.total,
-				Operand::Num(n) => *n as u64,
+				Operand::Num(n) => *n as i64,
 			},
 			Expression::Plus(a, b) => a.calc() + b.calc(),
 			// TODO: Fix subtraction
 			Expression::Minus(a, b) => a.calc().checked_sub(b.calc()).unwrap_or_default(),
 			Expression::Multiply(a, b) => a.calc() * b.calc(),
-			Expression::Divide(a, b) => (a.calc() as f32 / b.calc() as f32).round() as u64,
+			Expression::Divide(a, b) => (a.calc() as f32 / b.calc() as f32).round() as i64,
 		}
 	}
 }
@@ -424,8 +433,10 @@ peg::parser! {
 			{? num.parse().or(Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")) }
 
 		rule dice_face() -> DiceFace
-		= num:$(num() / "%" / "⛧")
-			{? num.parse().or(Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")) }
+		= num:$(num() / "%" / "⛧" / "F")
+			{? num.parse().or_else(|err|{
+				error!("{}", err);
+				Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")}) }
 
 		rule dice_selector() -> DiceSelector
 		= op:$("kh" / "kl" / "dh" / "dl") num:num()
@@ -460,7 +471,7 @@ peg::parser! {
 					(DiceNum::Num(num), _) => (num, selectors),
 					_ => return Err("Nope, that doesn't make any sense"),
 				};
-				if face.get_value() > 1000 {
+				if face.get_min_value() > 1000 {
 					return Err("Nope, I don't have that kind of dice!")
 				}
 				Ok(Dice::new(dice_num, face, selectors))

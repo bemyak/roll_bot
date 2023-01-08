@@ -204,7 +204,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
 								.iter()
 								.filter_map(format_entry)
 								.map(|cell| demarkup(&cell))
-								.map(|cell| Cell::new(&cell))
+								.map(Cell::new)
 								.collect::<Vec<_>>(),
 						));
 					}
