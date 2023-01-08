@@ -166,6 +166,7 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 		RollBotCommands::Stats => bot
 			.send_message(msg.chat.id, stats()?)
 			.parse_mode(ParseMode::Html)
+			.disable_web_page_preview(true)
 			.await
 			.map_err(BotError::Request),
 		RollBotCommands::Query((collection, item)) => {
@@ -175,6 +176,7 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 			.send_message(msg.chat.id, err)
 			.reply_to_message_id(msg.id)
 			.parse_mode(ParseMode::Html)
+			.disable_web_page_preview(true)
 			.await
 			.map_err(BotError::Request),
 	}
@@ -273,6 +275,7 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
 		HelpOptions::Roll => bot
 			.send_message(msg.chat.id, format::telegram::help_roll_message())
 			.parse_mode(ParseMode::Html)
+			.disable_web_page_preview(true)
 			.await
 			.map_err(BotError::Request),
 	}
@@ -326,6 +329,7 @@ async fn search_item(
 				),
 			)
 			.parse_mode(ParseMode::Html)
+			.disable_web_page_preview(true)
 			.reply_markup(force_reply)
 			.await
 			.map_err(BotError::Request);
@@ -562,12 +566,14 @@ async fn split_and_send(
 	for text in all {
 		bot.send_message(msg.chat.id, text)
 			.parse_mode(ParseMode::Html)
+			.disable_web_page_preview(true)
 			.await?;
 	}
 
 	let mut answer = bot
 		.send_message(msg.chat.id, last)
-		.parse_mode(ParseMode::Html);
+		.parse_mode(ParseMode::Html)
+		.disable_web_page_preview(true);
 
 	if let Some(markup) = keyboard {
 		answer = answer.reply_markup(markup);

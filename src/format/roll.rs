@@ -131,19 +131,6 @@ pub enum DiceFace {
 	Zalgo,
 }
 
-impl FromStr for DiceFace {
-	type Err = ParseIntError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Ok(match s {
-			"%" => DiceFace::Percentile,
-			"F" => DiceFace::Fudge,
-			PENTAGRAM | "0" => DiceFace::Zalgo,
-			_ => DiceFace::Num(s.parse()?),
-		})
-	}
-}
-
 impl Display for DiceFace {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -434,9 +421,16 @@ peg::parser! {
 
 		rule dice_face() -> DiceFace
 		= num:$(num() / "%" / "⛧" / "F")
-			{? num.parse().or_else(|err|{
-				error!("{}", err);
-				Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?")}) }
+			{?
+				Ok(match num {
+					"%" => DiceFace::Percentile,
+					"F" => DiceFace::Fudge,
+					PENTAGRAM | "0" => DiceFace::Zalgo,
+					_ => DiceFace::Num(
+						num.parse().or(Err("Wow, an error occurred, which shouldn't happen 🤔. Are you happy?"))?
+					),
+				})
+			}
 
 		rule dice_selector() -> DiceSelector
 		= op:$("kh" / "kl" / "dh" / "dl") num:num()
@@ -460,7 +454,7 @@ peg::parser! {
 				}
 			}
 
-		rule dice() -> Dice
+		pub rule dice() -> Dice
 		= num:dice_num()? ['d' | 'D' | 'к' | 'д'] face:dice_face() selectors:(dice_selector() / dice_selector_short())*
 			{?
 				let dice_num = num.unwrap_or(DiceNum::Num(1));
@@ -596,13 +590,52 @@ mod test {
 		);
 	}
 
-	// #[test]
-	// fn test_full_notation() {
-	// 	assert_eq!(
-	// 		roll_parser::operand("1d20kh4kl3dh2dl1"),
-	// 		Ok(Operand::Dice(Dice::default()))
-	// 	);
-	// }
+	#[test]
+	fn test_full_notation() {
+		assert_eq!(
+			roll_parser::dice("10d20kh4kl3dh2dl1"),
+			Ok(Dice {
+				num: 10,
+				face: DiceFace::Num(20),
+				selectors: vec![
+					DiceSelector::KeepHigh(4),
+					DiceSelector::KeepLow(3),
+					DiceSelector::DropHigh(2),
+					DiceSelector::DropLow(1),
+				],
+				results: vec![],
+				total: 0,
+			})
+		);
+	}
+
+	#[test]
+	fn test_percentile() {
+		assert_eq!(
+			roll_parser::dice("10d%"),
+			Ok(Dice {
+				num: 10,
+				face: DiceFace::Percentile,
+				selectors: vec![],
+				results: vec![],
+				total: 0,
+			})
+		);
+	}
+
+	#[test]
+	fn test_fudge() {
+		assert_eq!(
+			roll_parser::dice("4dF"),
+			Ok(Dice {
+				num: 4,
+				face: DiceFace::Fudge,
+				selectors: vec![],
+				results: vec![],
+				total: 0,
+			})
+		);
+	}
 
 	#[test]
 	fn test_parse_expression() {
