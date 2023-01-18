@@ -24,13 +24,13 @@ peg = "0.8.1"
 percent-encoding = "2.2.0"
 prometheus = { version = "0.13.3", default-features = false, features = ["process"] }
 rand = "0.8.5"
-regex = "1.7.0"
+regex = "1.7.1"
 reqwest = { version = "0.11.13", default-features = false, features = ["json", "rustls-tls"] }
 serde = "1.0.152"
 serde_json = { version = "1.0.91", default-features = false }
 simplelog = { version = "0.12.0", default-features = false }
 simsearch = "0.2.3"
-teloxide = { version = "0.11.3", default-features = false, features = [
+teloxide = { version = "0.12.0", default-features = false, features = [
 	"rustls",
 	"ctrlc_handler",
 	"auto-send",
@@ -38,7 +38,7 @@ teloxide = { version = "0.11.3", default-features = false, features = [
 	"throttle",
 ] }
 thiserror = "1.0.38"
-tokio = { version = "1.24.1", default-features = false, features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.24.2", default-features = false, features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.11"
 zalgo = "0.2.0"
 itertools = "0.10.5"
