@@ -433,8 +433,9 @@ peg::parser! {
 			}
 
 		rule dice_selector() -> DiceSelector
-		= op:$("kh" / "kl" / "dh" / "dl") num:num()
+		= op:$("kh" / "kl" / "dh" / "dl") num:num()?
 			{
+				let num = num.unwrap_or(1);
 				match op {
 					"kh" => DiceSelector::KeepHigh(num),
 					"kl" => DiceSelector::KeepLow(num),
