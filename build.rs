@@ -80,10 +80,7 @@ fn gen_types(input_file: &Path, output_file: &Path, type_name: Option<&str>) {
 		.generate();
 	std::fs::write(
 		output_file,
-		format!(
-			"use serde::{{Deserialize, Serialize}};\nuse super::*;\n{}",
-			entry
-		),
+		format!("use serde::{{Deserialize, Serialize}};\nuse super::*;\n{entry}"),
 	)
 	.unwrap();
 }

@@ -38,7 +38,7 @@ impl Entry for Document {
 		let mut result = source.to_string();
 
 		if let Ok(page) = page {
-			write!(result, ", page {}", page).ok()?;
+			write!(result, ", page {page}").ok()?;
 		}
 
 		if let Ok(srd) = srd {
@@ -74,7 +74,7 @@ impl Entry for Document {
 		entries
 			.into_iter()
 			.filter_map(|t| {
-				let name = t.get_str("name").map(|s| format!("<b>{}</b>:", s)).ok();
+				let name = t.get_str("name").map(|s| format!("<b>{s}</b>:")).ok();
 				let entries = t.get_entries("entries").map(|entries| entries.join("\n"));
 				vec![name, entries].filter_join(" ")
 			})
@@ -86,7 +86,7 @@ impl Entry for Document {
 		let mut res = String::new();
 		self.into_iter().for_each(|(k, v)| match k.as_ref() {
 			"_id" => {}
-			"name" => write!(&mut res, "<b>{}</b>\n\n", v).unwrap(),
+			"name" => write!(&mut res, "<b>{v}</b>\n\n").unwrap(),
 			"entries" => {
 				let s = match v {
 					Bson::Array(arr) => arr
@@ -96,7 +96,7 @@ impl Entry for Document {
 						.join("\n\n"),
 					_ => simple_format(v),
 				};
-				write!(&mut res, "\n{}\n\n", s).unwrap()
+				write!(&mut res, "\n{s}\n\n").unwrap()
 			}
 			_ => writeln!(&mut res, "<b>{}</b>: {}", k, simple_format(v)).unwrap(),
 		});
@@ -144,7 +144,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
 				items
 					.iter()
 					.filter_map(format_entry)
-					.map(|s| format!("\t• {}", s))
+					.map(|s| format!("\t• {s}"))
 					.collect::<Vec<_>>()
 					.join("\n")
 			}
@@ -163,7 +163,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
 						.ok()
 				})?;
 
-				format!("{}: {}", name, entry)
+				format!("{name}: {entry}")
 			}
 			"entries" => {
 				let name = entry.get_str("name").ok()?;
@@ -176,7 +176,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
 				let caption = entry.get_str("caption");
 
 				if let Ok(caption) = caption {
-					writeln!(table_result, "<b>{}</b>", caption).ok()?
+					writeln!(table_result, "<b>{caption}</b>").ok()?
 				}
 
 				let mut table = Table::new();
@@ -210,7 +210,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
 					}
 				});
 
-				write!(table_result, "<pre>\n{}</pre>", table).ok()?;
+				write!(table_result, "<pre>\n{table}</pre>").ok()?;
 				table_result
 			}
 			"cell" => {
@@ -221,9 +221,9 @@ fn format_entry(entry: &Bson) -> Option<String> {
 				let exact = roll.get_i64("exact");
 
 				if let Ok(exact) = exact {
-					format!("{}", exact)
+					format!("{exact}")
 				} else if let (Ok(min), Ok(max)) = (min, max) {
-					format!("{}-{}", min, max)
+					format!("{min}-{max}")
 				} else {
 					return None;
 				}
@@ -241,7 +241,7 @@ fn format_entry(entry: &Bson) -> Option<String> {
 
 fn simple_format(bs: &Bson) -> String {
 	match bs {
-		Bson::FloatingPoint(num) => format!("{}", num),
+		Bson::FloatingPoint(num) => format!("{num}"),
 		Bson::String(s) => s.to_owned(),
 		Bson::Array(arr) => arr
 			.iter()
@@ -258,8 +258,8 @@ fn simple_format(bs: &Bson) -> String {
 			false => "No".to_owned(),
 		},
 		Bson::Null => "null".to_owned(),
-		Bson::I32(num) => format!("{}", num),
-		Bson::I64(num) => format!("{}", num),
+		Bson::I32(num) => format!("{num}"),
+		Bson::I64(num) => format!("{num}"),
 		_ => panic!("Unknown type: {:?}", bs.element_type()),
 	}
 }
@@ -272,17 +272,17 @@ pub fn cost_to_string(cost: i64) -> String {
 	let cooper = if cooper == 0 {
 		None
 	} else {
-		Some(format!("{}cp", cooper))
+		Some(format!("{cooper}cp"))
 	};
 	let silver = if silver == 0 {
 		None
 	} else {
-		Some(format!("{}sp", silver))
+		Some(format!("{silver}sp"))
 	};
 	let gold = if gold == 0 {
 		None
 	} else {
-		Some(format!("{}gp", gold))
+		Some(format!("{gold}gp"))
 	};
 
 	vec![gold, silver, cooper]

@@ -95,10 +95,10 @@ impl Display for Operand {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Operand::Dice(d) => {
-				write!(f, "{}", d)
+				write!(f, "{d}")
 			}
 			Operand::Num(n) => {
-				write!(f, "{}", n)
+				write!(f, "{n}")
 			}
 		}
 	}
@@ -254,7 +254,7 @@ impl Display for Dice {
 			(num, selectors) => {
 				write!(f, "<code>{num}d{face_str}")?;
 				for selector in selectors {
-					write!(f, "{}", selector)?;
+					write!(f, "{selector}")?;
 				}
 				write!(f, "</code>")?;
 			}
@@ -282,7 +282,7 @@ impl Display for Dice {
 				.collect::<Vec<_>>()
 				.join(",")
 		};
-		write!(f, " [{}]", roll_results)
+		write!(f, " [{roll_results}]")
 	}
 }
 
@@ -307,30 +307,30 @@ impl Display for Expression {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Expression::Value(v) => {
-				write!(f, "{}", v)
+				write!(f, "{v}")
 			}
 			Expression::Plus(a, b) => {
-				write!(f, "{} + {}", a, b)
+				write!(f, "{a} + {b}")
 			}
 			Expression::Minus(a, b) => {
-				write!(f, "{} - {}", a, b)
+				write!(f, "{a} - {b}")
 			}
 			Expression::Multiply(a, b) => {
 				match **a {
 					Expression::Plus(_, _) | Expression::Minus(_, _) => {
-						write!(f, "({})", a)?;
+						write!(f, "({a})")?;
 					}
 					_ => {
-						write!(f, "{}", a)?;
+						write!(f, "{a}")?;
 					}
 				}
 				write!(f, " × ")?;
 				match **b {
 					Expression::Plus(_, _) | Expression::Minus(_, _) => {
-						write!(f, "({})", b)?;
+						write!(f, "({b})")?;
 					}
 					_ => {
-						write!(f, "{}", b)?;
+						write!(f, "{b}")?;
 					}
 				}
 				Ok(())
@@ -338,19 +338,19 @@ impl Display for Expression {
 			Expression::Divide(a, b) => {
 				match **a {
 					Expression::Plus(_, _) | Expression::Minus(_, _) => {
-						write!(f, "({})", a)?;
+						write!(f, "({a})")?;
 					}
 					_ => {
-						write!(f, "{}", a)?;
+						write!(f, "{a}")?;
 					}
 				}
 				write!(f, " ÷ ")?;
 				match **b {
 					Expression::Plus(_, _) | Expression::Minus(_, _) => {
-						write!(f, "({})", b)?;
+						write!(f, "({b})")?;
 					}
 					_ => {
-						write!(f, "{}", b)?;
+						write!(f, "{b}")?;
 					}
 				}
 				Ok(())
@@ -740,7 +740,7 @@ mod test {
 	#[test]
 	fn test_display_expression() {
 		let expr = roll_parser::expression("1d10").unwrap();
-		print!("{}", expr);
+		print!("{expr}");
 		println!(" = {}", expr.calc());
 	}
 
@@ -772,7 +772,7 @@ mod test {
 	#[test]
 	fn test_mixed_comment() {
 		let expr = roll_parser::expressions("d20 to sneak the target 2d6 damage");
-		println!("{:?}", expr);
+		println!("{expr:?}");
 		assert!(expr.is_ok());
 		let expr = expr.unwrap();
 		assert_eq!(

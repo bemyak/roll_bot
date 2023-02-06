@@ -66,14 +66,14 @@ impl Item for Document {
 		let tags = self
 			.get_tags(&type_, &type_abbreviation)
 			.map(|t| t.join(", "));
-		let tier = self.get_tier().map(|t| format!("{} tier", t));
+		let tier = self.get_tier().map(|t| format!("{t} tier"));
 		let rarity = self.get_rarity();
 
 		let meta = vec![tags, tier, rarity]
 			.filter_join(", ")
 			.map(|s| s.capitalize());
 		if let Some(meta) = meta {
-			write!(s, "\n<i>{}</i>", meta).ok()?;
+			write!(s, "\n<i>{meta}</i>").ok()?;
 		}
 
 		if let Some(attune) = self.get_attune() {
@@ -83,36 +83,36 @@ impl Item for Document {
 			write!(s, "\n\n<b>Cost</b>: {}", cost_to_string(value)).ok()?;
 		}
 		if let Some(carrying_capacity) = self.get_carrying_capacity() {
-			write!(s, "\n<b>Carrying capacity</b>: {} lb.", carrying_capacity).ok()?;
+			write!(s, "\n<b>Carrying capacity</b>: {carrying_capacity} lb.").ok()?;
 		}
 		if let Some(ac) = self.get_ac() {
-			write!(s, "\n<b>AC</b>: {}", ac).ok()?;
+			write!(s, "\n<b>AC</b>: {ac}").ok()?;
 		}
 		if let Some(dmg1) = self.get_dmg1() {
-			write!(s, "\n<b>Damage</b>: {}", dmg1).ok()?;
+			write!(s, "\n<b>Damage</b>: {dmg1}").ok()?;
 			if let Some(dmg_type) = self.get_dmg_type() {
-				write!(s, " {}", dmg_type).ok()?
+				write!(s, " {dmg_type}").ok()?
 			}
 		} else if let Some(dmg_type) = self.get_dmg_type() {
-			write!(s, "\n<b>Damage type</b>: {}", dmg_type).ok()?
+			write!(s, "\n<b>Damage type</b>: {dmg_type}").ok()?
 		}
 		if let Some(speed) = self.get_speed() {
-			write!(s, "\n<b>Speed</b>: {}", speed).ok()?;
+			write!(s, "\n<b>Speed</b>: {speed}").ok()?;
 		}
 
 		if let Some(weight) = self.get_weight() {
-			write!(s, "\n<b>Weight</b>: {} lb", weight).ok()?;
+			write!(s, "\n<b>Weight</b>: {weight} lb").ok()?;
 		}
 
 		if let Some(ammo_type) = self.get_ammo_type() {
-			write!(s, "\n<b>Ammo Type</b>: {}", ammo_type).ok()?;
+			write!(s, "\n<b>Ammo Type</b>: {ammo_type}").ok()?;
 		}
 
 		if let Some(bonus_ac) = self.get_bonus_ac() {
-			write!(s, "\n<b>AC Bonus</b>: {}", bonus_ac).ok()?;
+			write!(s, "\n<b>AC Bonus</b>: {bonus_ac}").ok()?;
 		}
 		if let Some(bonus_weapon_attack) = self.get_bonus_weapon_attack() {
-			write!(s, "\n<b>Attack Bonus</b>: {}", bonus_weapon_attack).ok()?;
+			write!(s, "\n<b>Attack Bonus</b>: {bonus_weapon_attack}").ok()?;
 		}
 
 		if let Some(entries) = self.get_entries("entries") {
@@ -134,7 +134,7 @@ impl Item for Document {
 			write!(s, "\n\n<b>Loot tables</b>: {}", loot_tables.join(" ")).ok()?;
 		}
 		if let Some(source) = self.get_source() {
-			write!(s, "\n\n<i>{}</i>", source).ok()?;
+			write!(s, "\n\n<i>{source}</i>").ok()?;
 		}
 
 		Some(s)
@@ -259,7 +259,7 @@ impl Item for Document {
 	}
 	fn get_ammo_type(&self) -> Option<String> {
 		self.get_str("ammoType")
-			.map(|at| format!("{{@item {}}}", at))
+			.map(|at| format!("{{@item {at}}}"))
 			.ok()
 	}
 }

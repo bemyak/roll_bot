@@ -32,7 +32,7 @@ impl Spell for Document {
 			}
 		};
 
-		let mut result = format!("{}-level", level);
+		let mut result = format!("{level}-level");
 		if let Ok(school) = school {
 			let school = match school {
 				"A" => "abjuration",
@@ -46,7 +46,7 @@ impl Spell for Document {
 				"P" => "psionic",
 				_ => school,
 			};
-			write!(result, " {}", school).ok()?;
+			write!(result, " {school}").ok()?;
 		}
 		if is_ritual {
 			result.push_str(" ritual");
@@ -165,12 +165,12 @@ fn get_distance(range: &Document) -> Option<String> {
 fn get_material(components: &Document) -> Option<String> {
 	let m = components.get("m")?;
 	match m {
-		ejdb::bson_crate::Bson::String(s) => Some(format!("M ({})", s)),
+		ejdb::bson_crate::Bson::String(s) => Some(format!("M ({s})")),
 		ejdb::bson_crate::Bson::Boolean(_) => Some("M".to_string()),
 		ejdb::bson_crate::Bson::Document(obj) => {
 			let text = obj.get_str("text");
 			match text {
-				Ok(text) => Some(format!("M ({})", text)),
+				Ok(text) => Some(format!("M ({text})")),
 				Err(_) => Some("M".to_string()),
 			}
 		}

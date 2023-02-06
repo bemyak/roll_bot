@@ -217,12 +217,15 @@ async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Re
 
 	// Reroll special message
 	if let MessageKind::Common(ref mut common_msg) = msg.kind {
-		common_msg.from = Some(callback_msg.from);
+		// common_msg.from = Some(callback_msg.from);
 
 		if data == "reroll" {
-			let Some(reply) = std::mem::take(&mut common_msg.reply_to_message) else {
+			let Some(mut reply) = std::mem::take(&mut common_msg.reply_to_message) else {
 				return Err(BotError::BadCallback)
 			};
+			if let MessageKind::Common(common_reply) = &mut reply.kind {
+				common_reply.from = Some(callback_msg.from);
+			}
 			data = reply.text().ok_or(BotError::BadCallback)?.to_owned();
 			msg = *reply;
 		}
@@ -288,7 +291,7 @@ fn stats() -> Result<String, BotError> {
 		.as_secs();
 
 	let update_str = match last_update {
-		0..=60 => format!("{}s", last_update),
+		0..=60 => format!("{last_update}s"),
 		61..=3600 => format!("{}m", last_update / 60),
 		3601..=86400 => format!("{}h", last_update / 60 / 60),
 		86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
@@ -499,14 +502,14 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
 		});
 
 		match cmd {
-			"i" => format!("• {}", nice_str),
-			"hit" => format!("+{}", name),
+			"i" => format!("• {nice_str}"),
+			"hit" => format!("+{name}"),
 			"h" => match caps.name("bonus") {
 				Some(bonus) => format!("<b>{}</b>", bonus.as_str()),
 				None => "".to_owned(),
 			},
 			"atk" => "".to_owned(),
-			"scaledamage" => format!("<b>{}</b>", nice_str),
+			"scaledamage" => format!("<b>{nice_str}</b>"),
 			"dice" | "damage" => {
 				let roll_results = roll_results(name).unwrap();
 				let roll = roll_results.get(0).unwrap();
@@ -516,7 +519,7 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
 				if name.is_empty() {
 					"(Recharge 6)".to_string()
 				} else {
-					format!("(Recharge {}-6)", name)
+					format!("(Recharge {name}-6)")
 				}
 			}
 			_ => {
@@ -536,7 +539,7 @@ fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) 
 					)]);
 					*keyboard = kb;
 				}
-				format!("<i>{}</i>", nice_str)
+				format!("<i>{nice_str}</i>")
 			}
 		}
 	});
@@ -621,7 +624,7 @@ fn split2(text: &str, max_len: usize) -> Vec<String> {
 
 			let mut new_part: String = part.drain(..sep_pos).collect();
 			for tag in tags[..sep_tag_len].iter().rev() {
-				new_part.push_str(&format!("</{}>", tag));
+				new_part.push_str(&format!("</{tag}>"));
 			}
 			result.push(new_part);
 			sep_poss = [0, 0, 0];

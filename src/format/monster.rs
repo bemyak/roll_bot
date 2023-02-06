@@ -12,10 +12,10 @@ pub trait Monster: Entry {
 impl Monster for Document {
 	fn format_monster(&self) -> Option<String> {
 		let name = self.get_short_name().or_else(|| self.get_name())?;
-		let mut result = format!("<b>{}</b>", name);
+		let mut result = format!("<b>{name}</b>");
 
 		if let Some(val) = self.get_cr() {
-			write!(result, "\tCR {}", val).ok()?;
+			write!(result, "\tCR {val}").ok()?;
 		}
 
 		let meta = vec![
@@ -27,80 +27,80 @@ impl Monster for Document {
 		]
 		.filter_join(", ");
 		if let Some(meta) = meta {
-			write!(result, "\n<i>{}</i>\n", meta).ok()?;
+			write!(result, "\n<i>{meta}</i>\n").ok()?;
 		}
 		if let Some(ac) = self.get_ac() {
-			write!(result, "\n<b>AC</b>: {}", ac).ok()?;
+			write!(result, "\n<b>AC</b>: {ac}").ok()?;
 		}
 		if let Some(hp) = self.get_hp() {
-			write!(result, "\n<b>HP</b>: {}", hp).ok()?;
+			write!(result, "\n<b>HP</b>: {hp}").ok()?;
 		}
 		if let Some(speed) = self.get_speed() {
-			write!(result, "\n<b>Speed</b>: {}", speed).ok()?;
+			write!(result, "\n<b>Speed</b>: {speed}").ok()?;
 		}
 		if let Some(strength) = self.get_strength() {
-			write!(result, "\n<b>Str</b>: {}", strength).ok()?;
+			write!(result, "\n<b>Str</b>: {strength}").ok()?;
 		}
 		if let Some(dex) = self.get_dex() {
-			write!(result, "\t<b>Dex</b>: {}", dex).ok()?;
+			write!(result, "\t<b>Dex</b>: {dex}").ok()?;
 		}
 		if let Some(con) = self.get_con() {
-			write!(result, "\t<b>Con</b>: {}", con).ok()?;
+			write!(result, "\t<b>Con</b>: {con}").ok()?;
 		}
 		if let Some(int) = self.get_int() {
-			write!(result, "\n<b>Int</b>: {}", int).ok()?;
+			write!(result, "\n<b>Int</b>: {int}").ok()?;
 		}
 		if let Some(wis) = self.get_wis() {
-			write!(result, "\t<b>Wis</b>: {}", wis).ok()?;
+			write!(result, "\t<b>Wis</b>: {wis}").ok()?;
 		}
 		if let Some(cha) = self.get_cha() {
-			write!(result, "\t<b>Cha</b>: {}", cha).ok()?;
+			write!(result, "\t<b>Cha</b>: {cha}").ok()?;
 		}
 		if let Some(val) = self.get_save() {
-			write!(result, "\n<b>Saving Throws</b>: {}", val).ok()?;
+			write!(result, "\n<b>Saving Throws</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_skill() {
-			write!(result, "\n<b>Skills</b>: {}", val).ok()?;
+			write!(result, "\n<b>Skills</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_senses() {
-			write!(result, "\n<b>Senses</b>: {}", val).ok()?;
+			write!(result, "\n<b>Senses</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_passive() {
-			write!(result, "\n<b>Passive Perception</b>: {}", val).ok()?;
+			write!(result, "\n<b>Passive Perception</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_languages() {
-			write!(result, "\n<b>Languages</b>: {}", val).ok()?;
+			write!(result, "\n<b>Languages</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_vulnerable() {
-			write!(result, "\n<b>Damage Vulnerability</b>: {}", val).ok()?;
+			write!(result, "\n<b>Damage Vulnerability</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_resist() {
-			write!(result, "\n<b>Damage Resistance</b>: {}", val).ok()?;
+			write!(result, "\n<b>Damage Resistance</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_immune() {
-			write!(result, "\n<b>Damage Immunity</b>: {}", val).ok()?;
+			write!(result, "\n<b>Damage Immunity</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_condition_immune() {
-			write!(result, "\n<b>Condition Immunity</b>: {}", val).ok()?;
+			write!(result, "\n<b>Condition Immunity</b>: {val}").ok()?;
 		}
 		if let Some(val) = self.get_trait() {
-			write!(result, "\n\n{}", val).ok()?;
+			write!(result, "\n\n{val}").ok()?;
 		}
 		if let Some(val) = self.get_spellcasting() {
-			write!(result, "\n\n{}", val).ok()?;
+			write!(result, "\n\n{val}").ok()?;
 		}
 		if let Some(val) = self.get_action() {
-			write!(result, "\n\n<b>Actions</b>\n{}", val).ok()?;
+			write!(result, "\n\n<b>Actions</b>\n{val}").ok()?;
 		}
 		if let Some(val) = self.get_reaction() {
-			write!(result, "\n\n<b>Reactions</b>\n{}", val).ok()?;
+			write!(result, "\n\n<b>Reactions</b>\n{val}").ok()?;
 		}
 		if let Some(val) = self.get_legendary() {
 			result.push_str("\n\n<b>Legendary Actions</b>\n");
 			if let Some(val) = self.get_legendary_header() {
 				result.push_str(&val.join("\n"));
 			}
-			write!(result, "\n{}", val).ok()?;
+			write!(result, "\n{val}").ok()?;
 		}
 		if let Some(val) = self.get_legendary_group() {
 			let legendary_actions = DB.get_item("legendaryGroup", &val).ok().flatten();
@@ -115,7 +115,7 @@ impl Monster for Document {
 			if let Some(val) = self.get_mythic_header() {
 				result.push_str(&val.join("\n"));
 			}
-			write!(result, "\n{}", val).ok()?;
+			write!(result, "\n{val}").ok()?;
 		}
 
 		if let Some(source) = self.get_source() {
@@ -230,7 +230,7 @@ impl MonsterPrivate for Document {
 			return special;
 		}
 		let avg = hp.get_i64("average").ok().map(|i| i.to_string());
-		let formula = hp.get_str("formula").ok().map(|s| format!("({})", s));
+		let formula = hp.get_str("formula").ok().map(|s| format!("({s})"));
 		vec![avg, formula].filter_join(" ")
 	}
 	fn get_speed(&self) -> Option<String> {
@@ -275,7 +275,7 @@ impl MonsterPrivate for Document {
 		let fields = self.get_object_str_fields("save")?;
 		fields
 			.into_iter()
-			.map(|(k, v)| format!("{} {}", k, v).capitalize())
+			.map(|(k, v)| format!("{k} {v}").capitalize())
 			.collect::<Vec<_>>()
 			.join(", ")
 			.into_option()
@@ -284,7 +284,7 @@ impl MonsterPrivate for Document {
 		let fields = self.get_object_str_fields("skill")?;
 		fields
 			.into_iter()
-			.map(|(k, v)| format!("{} {}", k, v).capitalize())
+			.map(|(k, v)| format!("{k} {v}").capitalize())
 			.collect::<Vec<_>>()
 			.join(", ")
 			.into_option()
@@ -306,8 +306,8 @@ impl MonsterPrivate for Document {
 			Bson::String(s) => Some(s.to_string()),
 			Bson::Document(doc) => {
 				let cr = doc.get_string("cr");
-				let lair = doc.get_str("lair").map(|s| format!("{} in lair", s)).ok();
-				let coven = doc.get_str("coven").map(|s| format!("{} in coven", s)).ok();
+				let lair = doc.get_str("lair").map(|s| format!("{s} in lair")).ok();
+				let coven = doc.get_str("coven").map(|s| format!("{s} in coven")).ok();
 				vec![cr, lair, coven].filter_join(" or ")
 			}
 			_ => None,
@@ -351,9 +351,7 @@ impl MonsterPrivate for Document {
 		let name = self.get_name().unwrap_or_else(|| "It".to_string());
 		let num = self.get_i64("legendaryActions").unwrap_or(3);
 		self.get_entries("legendaryHeader").or_else(|| Some(vec![format!(
-            "{0} can take {1} legendary actions, choosing from the options below. Only one legendary action can be used at a time and only at the end of another creature's turn. {0} regains spent legendary actions at the start of its turn.",
-            name,
-            num
+            "{name} can take {num} legendary actions, choosing from the options below. Only one legendary action can be used at a time and only at the end of another creature's turn. {name} regains spent legendary actions at the start of its turn."
         )]))
 	}
 	fn get_legendary(&self) -> Option<String> {
@@ -385,7 +383,7 @@ impl MonsterUtils for Document {
 		let chance = self
 			.get_i64("chance")
 			.ok()
-			.map(|i| format!("({}% chance)", i));
+			.map(|i| format!("({i}% chance)"));
 		let note = self.get_str("note").ok().map(str::to_string);
 		vec![alignment, chance, note].filter_join(" ")
 	}
@@ -400,7 +398,7 @@ impl MonsterUtils for Document {
 	fn format_speed_val(&self) -> Option<String> {
 		let number = self.get_i64("number").ok()?;
 		let condition = self.get_str("condition").ok()?;
-		Some(format!("{} {}", number, condition))
+		Some(format!("{number} {condition}"))
 	}
 	fn format_damage_property(&self, key: &str) -> Option<String> {
 		let arr = self.get_array(key).ok()?;
@@ -430,9 +428,9 @@ impl MonsterUtils for Document {
 					let spells = spells.join("\n");
 					if k.ends_with('e') {
 						let lvl = k.replace('e', "");
-						format!("{}/{} each: {}", lvl, key, spells)
+						format!("{lvl}/{key} each: {spells}")
 					} else {
-						format!("{}/{}: {}", k, key, spells)
+						format!("{k}/{key}: {spells}")
 					}
 				})
 			})
@@ -461,16 +459,16 @@ impl MonsterUtils for Document {
 						match lower {
 							Some(lower) => {
 								let lower = Ordinal(lower).to_string();
-								write!(result, "{}-{}: ", lower, k).ok()?;
+								write!(result, "{lower}-{k}: ").ok()?;
 							}
 							None => {
-								write!(result, "{}: ", k).ok()?;
+								write!(result, "{k}: ").ok()?;
 							}
 						}
 
 						match slots {
 							Some(1) => result.push_str("(1 slot) "),
-							Some(slots) => write!(result, "({} slots) ", slots).ok()?,
+							Some(slots) => write!(result, "({slots} slots) ").ok()?,
 							None => {}
 						}
 
@@ -498,7 +496,7 @@ impl MonsterUtils for Document {
 		let mut result = String::new();
 
 		if let Some(name) = name {
-			write!(result, "<b>{}</b>: ", name).ok()?;
+			write!(result, "<b>{name}</b>: ").ok()?;
 		}
 		if let Some(header) = header {
 			result.push_str(&header.join("\n"));
@@ -554,9 +552,9 @@ impl MonsterUtils for Document {
 		let num = self.get_i64(stat).ok()?;
 		let bonus = (num - 10) / 2;
 		if bonus >= 0 {
-			Some(format!("{} (+{})", num, bonus))
+			Some(format!("{num} (+{bonus})"))
 		} else {
-			Some(format!("{} ({})", num, bonus))
+			Some(format!("{num} ({bonus})"))
 		}
 	}
 }

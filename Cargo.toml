@@ -12,8 +12,8 @@ panic = 'abort'
 [dependencies]
 comfy-table = "6.1.4"
 ejdb = "0.4.1"
-futures = { version = "0.3.25", default-features = false }
-hyper = { version = "0.14.23", default-features = false, features = ["server"] }
+futures = { version = "0.3.26", default-features = false }
+hyper = { version = "0.14.24", default-features = false, features = ["server"] }
 hyper-proxy = { version = "0.9.1", default-features = false, features = ["rustls"] }
 hyper-rustls = "0.23.2"
 Inflector = "0.11.4"
@@ -27,9 +27,9 @@ rand = "0.8.5"
 regex = "1.7.1"
 reqwest = { version = "0.11.14", default-features = false, features = ["json", "rustls-tls"] }
 serde = "1.0.152"
-serde_json = { version = "1.0.91", default-features = false }
+serde_json = { version = "1.0.92", default-features = false }
 simplelog = { version = "0.12.0", default-features = false }
-simsearch = "0.2.3"
+simsearch = "0.2.4"
 teloxide = { version = "0.12.0", default-features = false, features = [
 	"rustls",
 	"ctrlc_handler",
@@ -38,7 +38,7 @@ teloxide = { version = "0.12.0", default-features = false, features = [
 	"throttle",
 ] }
 thiserror = "1.0.38"
-tokio = { version = "1.24.2", default-features = false, features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.25.0", default-features = false, features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.11"
 zalgo = "0.2.0"
 itertools = "0.10.5"

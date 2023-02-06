@@ -71,7 +71,7 @@ impl DndDatabase {
 		info!("Saving {}, {}", collection, json.len());
 		let bs: Bson = serde_json::Value::Array(json).into();
 		let arr = bs.as_array().ok_or_else(|| {
-			bson::DecoderError::Unknown(format!("{} field is not an array", collection))
+			bson::DecoderError::Unknown(format!("{collection} field is not an array"))
 		})?;
 		let mut inner = self.inner.write().unwrap();
 		inner.timestamp = Instant::now();
@@ -237,7 +237,7 @@ impl DndDatabase {
 				Some(response) => response,
 			},
 			Err(err) => {
-				let mut err = format!("{}", err);
+				let mut err = err.to_string();
 				std::mem::swap(&mut default_response, &mut err);
 				&default_response
 			}

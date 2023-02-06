@@ -32,7 +32,7 @@ impl Collection {
 		let work = self
 			.urls
 			.iter()
-			.map(|url| download(format!("{}/{}", BASE_URL, url)))
+			.map(|url| download(format!("{BASE_URL}/{url}")))
 			.collect::<Vec<_>>();
 
 		let results = try_join_all(work).await?;
@@ -42,7 +42,7 @@ impl Collection {
 }
 
 pub async fn fetch_changelog() -> Result<Vec<JsonValue>, Box<dyn Error + Send + Sync>> {
-	let changelog_url = format!("{}{}", BASE_URL, CHANGELOG_URL);
+	let changelog_url = format!("{BASE_URL}{CHANGELOG_URL}");
 	info!("Fetching changelog {}", changelog_url);
 	let changelog = reqwest::get(&changelog_url).await?;
 	let changelog = changelog.text().await?;
