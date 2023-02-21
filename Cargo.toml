@@ -27,10 +27,10 @@ rand = "0.8.5"
 regex = "1.7.1"
 reqwest = { version = "0.11.14", default-features = false, features = ["json", "rustls-tls"] }
 serde = "1.0.152"
-serde_json = { version = "1.0.92", default-features = false }
+serde_json = { version = "1.0.93", default-features = false }
 simplelog = { version = "0.12.0", default-features = false }
 simsearch = "0.2.4"
-teloxide = { version = "0.12.0", default-features = false, features = [
+teloxide = { version = "0.12.2", default-features = false, features = [
 	"rustls",
 	"ctrlc_handler",
 	"auto-send",
@@ -39,7 +39,7 @@ teloxide = { version = "0.12.0", default-features = false, features = [
 ] }
 thiserror = "1.0.38"
 tokio = { version = "1.25.0", default-features = false, features = ["rt-multi-thread", "macros"] }
-tokio-stream = "0.1.11"
+tokio-stream = "0.1.12"
 zalgo = "0.2.0"
 itertools = "0.10.5"
 
