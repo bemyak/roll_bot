@@ -584,10 +584,11 @@ peg::parser! {
 				#[cfg(feature = "trace")]
 				println!("[PEG_TRACE_STOP]");
 				e.ok_or("")
-	}
+		}
 
 		pub rule expressions() -> Vec<RollLine>
-		= traced(<roll_line() ++ __ / only_comment() / nothing()>)
+		= _ e:(traced(<roll_line() ++ __ / only_comment() / nothing()>))
+		{e}
 
 	}
 }
