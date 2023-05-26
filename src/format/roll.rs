@@ -85,7 +85,7 @@ impl From<ParseError<LineCol>> for DieFormatError {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Operand {
 	Dice(Dice),
 	Num(u16),
@@ -123,7 +123,7 @@ impl FromStr for DiceNum {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum DiceFace {
 	Num(u16),
 	Percentile,
@@ -159,7 +159,7 @@ impl DiceFace {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum DiceSelector {
 	KeepHigh(u16),
 	KeepLow(u16),
@@ -178,7 +178,7 @@ impl Display for DiceSelector {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Dice {
 	pub num: u16,
 	pub face: DiceFace,
@@ -294,7 +294,7 @@ impl PartialEq for Dice {
 
 impl Eq for Dice {}
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
 	Value(Operand),
 	Plus(Box<Expression>, Box<Expression>),
@@ -405,11 +405,13 @@ impl RollLine {
 peg::parser! {
 	grammar roll_parser() for str {
 
+		/// Optional space
 		rule _()
 		= [' ' | '\n' | '\t']*
 
+		/// Required space
 		rule __()
-		= [' ' | '\n' | '\t']+
+		= [' ' | '\n' | '\t' ]+
 
 		rule num() -> u16
 		= num:$(['0'..='9']+)
@@ -518,29 +520,46 @@ peg::parser! {
 			}
 		}
 
+		#[cache]
 		pub rule expression() -> Expression
 		= full_expression() / short_bonus() / short_adv()
 
-		rule comment() -> Option<String>
-		= !expression() c:$(([_] !expression())+) {
-			const TRIM: [char; 5] = ['\\', ',', ';', '.', ':'];
-			let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c) );
-			if c.is_empty() {
-				None
-			} else {
-				Some(c.to_owned())
-			}
+		rule comment_with_quotes() -> String
+		= "\"" c:$([^'"']+) "\""
+		{
+			c.to_owned()
 		}
+
+		rule obvious_dice()
+		= ['0'..='9']* ['d' | 'D' | 'к' | 'д'] ['0'..='9']+
+
+		rule comment_word() -> String
+		// = !expression() c:$(([_] !expression())+) {
+		// = !expression() c:$([^' '|'\n']) {
+		= !expression() !obvious_dice() c:$([^' '|'\n'|'\t']+) {
+			const TRIM: [char; 5] = ['\\', ',', ';', '.', ':'];
+			// let c = words.iter().flatten().collect();
+			let c = c.trim_matches(|c: char| c.is_whitespace() || TRIM.contains(&c) );
+			c.to_owned()
+		}
+
+		rule comment_without_quotes() -> String
+		= c:(comment_word() ++ _) {
+			c.into_iter().collect::<Vec<_>>().join(" ")
+		}
+
+		rule comment() -> String
+		= comment_with_quotes() / comment_without_quotes()
 
 		rule expression_with_comment() -> RollLine
 		= e:expression() __ c:comment() {
-			RollLine::new(e, c)
+			RollLine::new(e, Some(c))
 		}
 
 		rule only_comment() -> Vec<RollLine>
 		= c:comment() {
 			let expression = Expression::default();
-			vec![RollLine::new(expression, c)]
+			vec![RollLine::new(expression, Some(c))]
 		}
 
 		rule expression_without_comment() -> RollLine
@@ -575,6 +594,8 @@ peg::parser! {
 
 #[cfg(test)]
 mod test {
+
+	use tokio_test::{assert_err, assert_ok};
 
 	use super::*;
 
@@ -691,8 +712,6 @@ mod test {
 
 	#[test]
 	fn test_parse_expressions() {
-		assert!(roll_parser::expressions("10000000d5").is_err());
-
 		assert_eq!(
 			roll_parser::expressions("1d20 + 5"),
 			Ok(vec![RollLine {
@@ -740,14 +759,13 @@ mod test {
 	#[test]
 	fn test_display_expression() {
 		let expr = roll_parser::expression("1d10").unwrap();
-		print!("{expr}");
-		println!(" = {}", expr.calc());
+		println!("{expr} = {}", expr.calc());
 	}
 
 	#[test]
 	fn test_errors() {
-		let expr = roll_parser::expression("9999999d200");
-		assert!(expr.is_err());
+		assert_err!(roll_parser::expression("9999999d200"));
+		assert_err!(roll_parser::expressions("10000000d5"));
 	}
 
 	#[test]
@@ -763,17 +781,27 @@ mod test {
 				comment: Some("to sneak the target".to_owned())
 			}])
 		);
-		// assert!(expr.is_ok());
-		// let expr = expr.unwrap();
-		// let expr = expr.get(0).unwrap();
-		// assert_eq!(expr.comment, Some("to sneak the target".to_owned()));
+	}
+
+	#[test]
+	fn test_quoted_comment() {
+		let expr = roll_parser::expressions("d20 + 5 \"to sneak the Orc-1\"");
+		assert_eq!(
+			expr,
+			Ok(vec![RollLine {
+				expression: Expression::Plus(
+					Box::new(Expression::Value(Operand::Dice(Dice::default()))),
+					Box::new(Expression::Value(Operand::Num(5)))
+				),
+				comment: Some("to sneak the Orc-1".to_owned())
+			}])
+		);
 	}
 
 	#[test]
 	fn test_mixed_comment() {
 		let expr = roll_parser::expressions("d20 to sneak the target 2d6 damage");
-		println!("{expr:?}");
-		assert!(expr.is_ok());
+		assert_ok!(&expr);
 		let expr = expr.unwrap();
 		assert_eq!(
 			expr,
@@ -793,7 +821,7 @@ mod test {
 	#[test]
 	fn test_empty_comment() {
 		let expr = roll_parser::expressions("to sneak the target");
-		assert!(expr.is_ok());
+		assert_ok!(&expr);
 		let expr = expr.unwrap();
 		assert_eq!(
 			expr,
@@ -802,5 +830,45 @@ mod test {
 				comment: Some("to sneak the target".to_owned()),
 			}]
 		);
+	}
+}
+
+#[cfg(test)]
+mod peg_playground {
+	use tokio_test::assert_err;
+
+	peg::parser! {
+		grammar test_parser() for str {
+			/// Optional space
+			rule _()
+			= [' ']*
+			/// Required space
+			rule __()
+			= [' ']+
+
+			pub rule num() -> u16
+			= num:$(['0'..='9']+) {?
+				num.parse().or(Err("Wow, that's a big number!"))
+			}
+
+			pub rule num_str() -> String
+			= num:num() {
+				format!("num: {num}")
+			}
+
+			pub rule text() -> String
+			= s:$([_]+) {
+				format!("str: {s}")
+			}
+
+			pub rule test() -> String
+			= num_str() / text()
+		}
+	}
+
+	#[test]
+	fn test_num() {
+		let r = test_parser::test("9999999999");
+		assert_err!(&r);
 	}
 }

@@ -12,8 +12,8 @@ panic = 'abort'
 [dependencies]
 comfy-table = "6.1.4"
 ejdb = "0.4.1"
-futures = { version = "0.3.26", default-features = false }
-hyper = { version = "0.14.24", default-features = false, features = ["server"] }
+futures = { version = "0.3.27", default-features = false }
+hyper = { version = "0.14.25", default-features = false, features = ["server"] }
 hyper-proxy = { version = "0.9.1", default-features = false, features = ["rustls"] }
 hyper-rustls = "0.23.2"
 Inflector = "0.11.4"
@@ -26,9 +26,9 @@ prometheus = { version = "0.13.3", default-features = false, features = ["proces
 rand = "0.8.5"
 regex = "1.7.1"
 reqwest = { version = "0.11.14", default-features = false, features = ["json", "rustls-tls"] }
-serde = "1.0.152"
-serde_json = { version = "1.0.93", default-features = false }
-simplelog = { version = "0.12.0", default-features = false }
+serde = "1.0.158"
+serde_json = { version = "1.0.94", default-features = false }
+simplelog = { version = "0.12.1", default-features = false }
 simsearch = "0.2.4"
 teloxide = { version = "0.12.2", default-features = false, features = [
 	"rustls",
@@ -37,14 +37,14 @@ teloxide = { version = "0.12.2", default-features = false, features = [
 	"cache-me",
 	"throttle",
 ] }
-thiserror = "1.0.38"
-tokio = { version = "1.25.0", default-features = false, features = ["rt-multi-thread", "macros"] }
+thiserror = "1.0.40"
+tokio = { version = "1.26.0", default-features = false, features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.12"
 zalgo = "0.2.0"
 itertools = "0.10.5"
 
 [dev-dependencies]
-simplelog  = { version = "0.12.0", default-features = false, features = ["test"] }
+simplelog  = { version = "0.12.1", default-features = false, features = ["test"] }
 tokio-test = "0.4.2"
 
 [build-dependencies]
