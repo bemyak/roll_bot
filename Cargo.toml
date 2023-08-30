@@ -10,19 +10,19 @@ lto   = "fat"
 panic = 'abort'
 
 [dependencies]
-comfy-table = "6.1.4"
-ejdb = "0.4.1"
+comfy-table = "7.0.1"
+ejdb = { git = "https://github.com/bemyak/ejdb.rs.git", branch = "master" }
 futures = { version = "0.3.27", default-features = false }
 hyper = { version = "0.14.25", default-features = false, features = ["server"] }
 hyper-proxy = { version = "0.9.1", default-features = false, features = ["rustls"] }
-hyper-rustls = "0.23.2"
+hyper-rustls = "0.24.1"
 Inflector = "0.11.4"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", default-features = false }
 ordinal = "0.3.2"
 peg = "0.8.1"
 percent-encoding = "2.2.0"
-prometheus = { version = "0.13.3", default-features = false, features = ["process"] }
+prometheus = { version = "= 0.13.2", default-features = false, features = ["process"] }
 rand = "0.8.5"
 regex = "1.7.1"
 reqwest = { version = "0.11.14", default-features = false, features = ["json", "rustls-tls"] }
@@ -41,7 +41,7 @@ thiserror = "1.0.40"
 tokio = { version = "1.26.0", default-features = false, features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.12"
 zalgo = "0.2.0"
-itertools = "0.10.5"
+itertools = "0.11.0"
 
 [dev-dependencies]
 simplelog  = { version = "0.12.1", default-features = false, features = ["test"] }

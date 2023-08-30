@@ -163,22 +163,30 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 			)
 			.await
 		}
-		RollBotCommands::Stats => bot
-			.send_message(msg.chat.id, stats()?)
-			.parse_mode(ParseMode::Html)
-			.disable_web_page_preview(true)
-			.await
-			.map_err(BotError::Request),
+		RollBotCommands::Stats => {
+			let mut m = bot
+				.send_message(msg.chat.id, stats()?)
+				.parse_mode(ParseMode::Html)
+				.disable_web_page_preview(true);
+			if let Some(thread_id) = msg.thread_id {
+				m = m.message_thread_id(thread_id);
+			}
+			m.await.map_err(BotError::Request)
+		}
 		RollBotCommands::Query((collection, item)) => {
 			search_item(msg, bot, collection, &item).await
 		}
-		RollBotCommands::Echo(err) | RollBotCommands::Error(err) => bot
-			.send_message(msg.chat.id, err)
-			.reply_to_message_id(msg.id)
-			.parse_mode(ParseMode::Html)
-			.disable_web_page_preview(true)
-			.await
-			.map_err(BotError::Request),
+		RollBotCommands::Echo(err) | RollBotCommands::Error(err) => {
+			let mut m = bot
+				.send_message(msg.chat.id, err)
+				.reply_to_message_id(msg.id)
+				.parse_mode(ParseMode::Html)
+				.disable_web_page_preview(true);
+			if let Some(thread_id) = msg.thread_id {
+				m = m.message_thread_id(thread_id);
+			}
+			m.await.map_err(BotError::Request)
+		}
 	}
 	.map(|r| r.text().map(|s| s.to_owned()));
 
@@ -221,7 +229,7 @@ async fn process_callback_query(callback_msg: CallbackQuery, bot: RollBot) -> Re
 
 		if data == "reroll" {
 			let Some(mut reply) = std::mem::take(&mut common_msg.reply_to_message) else {
-				return Err(BotError::BadCallback)
+				return Err(BotError::BadCallback);
 			};
 			if let MessageKind::Common(common_reply) = &mut reply.kind {
 				common_reply.from = Some(callback_msg.from);
@@ -268,19 +276,26 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
 					),
 				],
 			]);
-			bot.send_message(msg.chat.id, format::telegram::help_message())
+			let mut m = bot
+				.send_message(msg.chat.id, format::telegram::help_message())
 				.parse_mode(ParseMode::Html)
 				.reply_markup(ReplyMarkup::InlineKeyboard(kb))
-				.disable_web_page_preview(true)
-				.await
-				.map_err(BotError::Request)
+				.disable_web_page_preview(true);
+			if let Some(thread_id) = msg.thread_id {
+				m = m.message_thread_id(thread_id);
+			}
+			m.await.map_err(BotError::Request)
 		}
-		HelpOptions::Roll => bot
-			.send_message(msg.chat.id, format::telegram::help_roll_message())
-			.parse_mode(ParseMode::Html)
-			.disable_web_page_preview(true)
-			.await
-			.map_err(BotError::Request),
+		HelpOptions::Roll => {
+			let mut m = bot
+				.send_message(msg.chat.id, format::telegram::help_roll_message())
+				.parse_mode(ParseMode::Html)
+				.disable_web_page_preview(true);
+			if let Some(thread_id) = msg.thread_id {
+				m = m.message_thread_id(thread_id);
+			}
+			m.await.map_err(BotError::Request)
+		}
 	}
 }
 
@@ -323,7 +338,7 @@ async fn search_item(
 				lookup_item.get_default_command().to_title_case()
 			));
 
-		return bot
+		let mut m = bot
 			.send_message(
 				msg.chat.id,
 				format!(
@@ -333,9 +348,13 @@ async fn search_item(
 			)
 			.parse_mode(ParseMode::Html)
 			.disable_web_page_preview(true)
-			.reply_markup(force_reply)
-			.await
-			.map_err(BotError::Request);
+			.reply_markup(force_reply);
+
+		if let Some(thread_id) = msg.thread_id {
+			m = m.message_thread_id(thread_id);
+		}
+
+		return m.await.map_err(BotError::Request);
 	}
 
 	let exact_match_result = lookup_item
@@ -567,10 +586,14 @@ async fn split_and_send(
 	let (last, all) = messages.split_last().unwrap();
 
 	for text in all {
-		bot.send_message(msg.chat.id, text)
+		let mut m = bot
+			.send_message(msg.chat.id, text)
 			.parse_mode(ParseMode::Html)
-			.disable_web_page_preview(true)
-			.await?;
+			.disable_web_page_preview(true);
+		if let Some(thread_id) = msg.thread_id {
+			m = m.message_thread_id(thread_id);
+		}
+		m.await?;
 	}
 
 	let mut answer = bot
@@ -584,6 +607,10 @@ async fn split_and_send(
 
 	if let Some(reply_msg_id) = reply_msg_id {
 		answer = answer.reply_to_message_id(reply_msg_id);
+	}
+
+	if let Some(thread_id) = msg.thread_id {
+		answer = answer.message_thread_id(thread_id);
 	}
 
 	answer.await.map_err(BotError::Request)
