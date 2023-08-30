@@ -301,6 +301,7 @@ pub enum Expression {
 	Minus(Box<Expression>, Box<Expression>),
 	Multiply(Box<Expression>, Box<Expression>),
 	Divide(Box<Expression>, Box<Expression>),
+	DivideFloor(Box<Expression>, Box<Expression>),
 }
 
 impl Display for Expression {
@@ -355,6 +356,26 @@ impl Display for Expression {
 				}
 				Ok(())
 			}
+			Expression::DivideFloor(a, b) => {
+				match **a {
+					Expression::Plus(_, _) | Expression::Minus(_, _) => {
+						write!(f, "({a})")?;
+					}
+					_ => {
+						write!(f, "{a}")?;
+					}
+				}
+				write!(f, " \\ ")?;
+				match **b {
+					Expression::Plus(_, _) | Expression::Minus(_, _) => {
+						write!(f, "({b})")?;
+					}
+					_ => {
+						write!(f, "{b}")?;
+					}
+				}
+				Ok(())
+			}
 		}
 	}
 }
@@ -377,6 +398,7 @@ impl Expression {
 			Expression::Minus(a, b) => a.calc().checked_sub(b.calc()).unwrap_or_default(),
 			Expression::Multiply(a, b) => a.calc() * b.calc(),
 			Expression::Divide(a, b) => (a.calc() as f32 / b.calc() as f32).round() as i64,
+			Expression::DivideFloor(a, b) => a.calc() / b.calc(),
 		}
 	}
 }
@@ -492,6 +514,7 @@ peg::parser! {
 			--
 			x:(@) _ ("*" / "×") _ y:@ { Expression::Multiply(Box::new(x), Box::new(y)) }
 			x:(@) _ "÷" _ y:@ { Expression::Divide(Box::new(x), Box::new(y)) }
+			x:(@) _ "\\" _ y:@ { Expression::DivideFloor(Box::new(x), Box::new(y)) }
 			--
 			n:operand() { Expression::Value(n) }
 			"(" _ e:full_expression() _ ")" { e }
@@ -507,7 +530,7 @@ peg::parser! {
 		}
 
 		rule short_bonus() -> Expression
-		= sign:$['+' | '-' | '*' | '×' | '÷' ] _ num:num() {
+		= sign:$['+' | '-' | '*' | '×' | '÷' | '\\' ] _ num:num() {
 			let v1 = Box::new(Expression::Value(Operand::Dice(Dice::default())));
 			let v2 = Box::new(Expression::Value(Operand::Num(num)));
 			match sign {
@@ -515,6 +538,7 @@ peg::parser! {
 				"-" => Expression::Minus(v1,v2),
 				"*" | "×" => Expression::Multiply(v1,v2),
 				"÷" => Expression::Divide(v1,v2),
+				"\\" => Expression::Divide(v1,v2),
 				_ =>
 					unreachable!("Unknown sign {}", sign)
 			}
