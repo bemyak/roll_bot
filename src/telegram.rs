@@ -1,10 +1,12 @@
 use std::{borrow::Cow, env, time::Instant, vec};
 
-use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
+// use ejdb::bson_crate::{ordered::OrderedDocument, Bson};
+use futures::future;
 use inflector::Inflector;
 use itertools::Itertools;
 use regex::{Captures, Regex};
 use reqwest::Url;
+use serde_json::Value;
 use thiserror::Error;
 
 use teloxide::{
@@ -23,15 +25,17 @@ use crate::{
 	commands::{HelpOptions, RollBotCommands},
 	format::{
 		self,
-		db::{format_collection_metadata, format_message_stats},
+		ValueExt,
+		// db::{format_collection_metadata, format_message_stats},
 		item::Item,
-		monster::Monster,
+		// monster::Monster,
 		roll::{roll_results, DieFormatError},
-		spell::Spell,
-		telegram::chat_type_to_string,
+		// spell::Spell,
+		// telegram::chat_type_to_string,
 		utils::HtmlEscapable,
+		Document,
 	},
-	DB, DONATION_URL, PROJECT_URL,
+	CACHE, DB, DONATION_URL, PROJECT_URL,
 };
 
 type RollBot = Throttle<CacheMe<Bot>>;
@@ -78,9 +82,8 @@ pub enum BotError {
 	#[error("Request Error {0}")]
 	Request(#[from] RequestError),
 
-	#[error("Database Error {0}")]
-	Db(#[from] ejdb::Error),
-
+	// #[error("Database Error {0}")]
+	// Db(#[from] ejdb::Error),
 	#[error("Die Format Error {0}")]
 	DieFormat(#[from] DieFormatError),
 
@@ -122,10 +125,10 @@ fn extract_search_data_from_reply(msg: &Message) -> Option<(&'static Collection,
 }
 
 async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Result<(), BotError> {
-	let start_processing = Instant::now();
-	let chat_id = msg.chat.id;
-	let chat_kind = msg.chat.kind.clone();
-	let msg_text = msg.text().unwrap_or_default().to_string();
+	let _start_processing = Instant::now();
+	let _chat_id = msg.chat.id;
+	let _chat_kind = msg.chat.kind.clone();
+	let _msg_text = msg.text().unwrap_or_default().to_string();
 
 	if msg.via_bot != bot.get_me().await.ok().map(|bot| bot.user) {
 		trace!(
@@ -163,16 +166,16 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 			)
 			.await
 		}
-		RollBotCommands::Stats => {
-			let mut m = bot
-				.send_message(msg.chat.id, stats()?)
-				.parse_mode(ParseMode::Html)
-				.disable_web_page_preview(true);
-			if let Some(thread_id) = msg.thread_id {
-				m = m.message_thread_id(thread_id);
-			}
-			m.await.map_err(BotError::Request)
-		}
+		// RollBotCommands::Stats => {
+		// 	let mut m = bot
+		// 		.send_message(msg.chat.id, stats()?)
+		// 		.parse_mode(ParseMode::Html)
+		// 		.disable_web_page_preview(true);
+		// 	if let Some(thread_id) = msg.thread_id {
+		// 		m = m.message_thread_id(thread_id);
+		// 	}
+		// 	m.await.map_err(BotError::Request)
+		// }
 		RollBotCommands::Query((collection, item)) => {
 			search_item(msg, bot, collection, &item).await
 		}
@@ -190,16 +193,16 @@ async fn process_command(msg: Message, bot: RollBot, cmd: RollBotCommands) -> Re
 	}
 	.map(|r| r.text().map(|s| s.to_owned()));
 
-	DB.log_message(
-		chat_id.0,
-		chat_type_to_string(&chat_kind),
-		msg_text,
-		&response,
-		Instant::now()
-			.checked_duration_since(start_processing)
-			.unwrap()
-			.as_millis() as u64,
-	);
+	// DB.log_message(
+	// 	chat_id.0,
+	// 	chat_type_to_string(&chat_kind),
+	// 	msg_text,
+	// 	&response,
+	// 	Instant::now()
+	// 		.checked_duration_since(start_processing)
+	// 		.unwrap()
+	// 		.as_millis() as u64,
+	// );
 
 	if let Err(err) = response {
 		error!("Error when sending the message: {err}");
@@ -299,30 +302,31 @@ async fn print_help(msg: Message, bot: RollBot, opts: HelpOptions) -> Result<Mes
 	}
 }
 
-fn stats() -> Result<String, BotError> {
-	let last_update = Instant::now()
-		.checked_duration_since(DB.get_update_timestamp())
-		.unwrap()
-		.as_secs();
+// fn stats() -> Result<String, BotError> {
+// 	let last_update = Instant::now()
+// 		.checked_duration_since(DB.get_update_timestamp())
+// 		.unwrap()
+// 		.as_secs();
 
-	let update_str = match last_update {
-		0..=60 => format!("{last_update}s"),
-		61..=3600 => format!("{}m", last_update / 60),
-		3601..=86400 => format!("{}h", last_update / 60 / 60),
-		86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
-	};
+// 	let update_str = match last_update {
+// 		0..=60 => format!("{last_update}s"),
+// 		61..=3600 => format!("{}m", last_update / 60),
+// 		3601..=86400 => format!("{}h", last_update / 60 / 60),
+// 		86401..=std::u64::MAX => format!("{}d", last_update / 60 / 60 / 24),
+// 	};
 
-	let collection_metadata = DB.get_metadata()?;
-	let messages = DB.get_all_massages()?;
+// 	let collection_metadata = DB.get_metadata()?;
+// 	let messages = DB.get_all_massages()?;
 
-	let msg = format!(
-        "<b>Table stats</b>\n{}\n\n<b>Usage stats</b> (since last month / total)\n{}\n\nLast database update <code>{}</code> ago",
-        format_collection_metadata(collection_metadata),
-        format_message_stats(messages)?,
-        update_str,
-    );
-	Ok(msg)
-}
+// 	// let msg = format!(
+// 	//     "<b>Table stats</b>\n{}\n\n<b>Usage stats</b> (since last month / total)\n{}\n\nLast database update <code>{}</code> ago",
+// 	//     format_collection_metadata(collection_metadata),
+// 	//     format_message_stats(messages)?,
+// 	//     update_str,
+// 	// );
+// 	let msg = "Not implemented".to_owned();
+// 	Ok(msg)
+// }
 
 async fn search_item(
 	msg: Message,
@@ -357,10 +361,18 @@ async fn search_item(
 		return m.await.map_err(BotError::Request);
 	}
 
-	let exact_match_result = lookup_item
-		.collections
-		.iter()
-		.filter_map(|collection| DB.get_item(collection, arg).ok().flatten())
+	let queries = future::join_all(
+		lookup_item
+			.collections
+			.iter()
+			.map(|collection| DB.find_one_by(collection, "name", arg)),
+	)
+	.await;
+
+	let exact_match_result = queries
+		.into_iter()
+		.filter_map(|r| r.ok())
+		.filter_map(Value::into_object)
 		.next();
 
 	match exact_match_result {
@@ -375,9 +387,10 @@ async fn search_item(
 				.sorted_by(|row1, row2| row1[0].text.cmp(&row2[0].text))
 				.collect();
 			let mut reply_msg = match lookup_item.type_ {
-				crate::collection::CollectionType::Item => item.format_item(),
-				crate::collection::CollectionType::Monster => item.format_monster(),
-				crate::collection::CollectionType::Spell => item.format_spell(),
+				crate::collection::CollectionType::Item => item.format_item().await,
+				// crate::collection::CollectionType::Monster => item.format_monster(),
+				// crate::collection::CollectionType::Spell => item.format_spell(),
+				_ => todo!(),
 			}
 			.ok_or_else(|| {
 				BotError::EntryFormat(lookup_item.get_default_command().to_owned() + ": " + arg)
@@ -393,17 +406,16 @@ async fn search_item(
 			.await
 		}
 		None => {
+			let cache = CACHE.read().await;
 			let iter = lookup_item
 				.collections
 				.iter()
 				.cloned()
 				.flat_map(|collection| {
-					let cache = DB.cache.read().unwrap();
-					let engine = cache.get(collection).unwrap();
-					let results = engine.search(arg);
+					let results = cache.search(collection, arg);
 					results.into_iter().map(|item| {
 						let command = format!("/{} {}", lookup_item.get_default_command(), item);
-						let button = InlineKeyboardButton::callback(item, command);
+						let button = InlineKeyboardButton::callback(item.to_string(), command);
 						vec![button]
 					})
 				})
@@ -436,25 +448,25 @@ async fn search_item(
 	}
 }
 
-fn replace_links(doc: &mut OrderedDocument, keyboard: &mut InlineKeyboardMarkup) {
+fn replace_links(doc: &mut Document, keyboard: &mut InlineKeyboardMarkup) {
 	let keys: Vec<String> = doc.keys().cloned().collect();
 	for key in keys {
-		let entry = doc.entry(key).or_insert(Bson::String("".to_string()));
+		let entry = doc.entry(key).or_insert(Value::String("".to_string()));
 		replace_bson_links(entry, keyboard);
 	}
 }
 
-fn replace_bson_links(b: &mut Bson, keyboard: &mut InlineKeyboardMarkup) {
+fn replace_bson_links(b: &mut Value, keyboard: &mut InlineKeyboardMarkup) {
 	match b {
-		Bson::String(val) => {
+		Value::String(val) => {
 			replace_string_links(val, keyboard);
 		}
-		Bson::Array(arr) => {
+		Value::Array(arr) => {
 			for val in arr {
 				replace_bson_links(val, keyboard);
 			}
 		}
-		Bson::Document(doc) => {
+		Value::Object(doc) => {
 			replace_links(doc, keyboard);
 		}
 		_ => {}
@@ -462,15 +474,15 @@ fn replace_bson_links(b: &mut Bson, keyboard: &mut InlineKeyboardMarkup) {
 }
 
 fn replace_string_links(text: &mut String, keyboard: &mut InlineKeyboardMarkup) {
-	lazy_static! {
-		static ref LINK_REGEX: Regex =
+	// lazy_static! {
+	let link_regex: Regex =
 			Regex::new(r"\{@(?P<cmd>\w+)(?:\s+(?P<arg1>.+?))?(?:\|(?P<arg2>.*?))?(?:\|(?P<arg3>.*?))?(?:\|(?P<arg4>.*?))?\}(?P<bonus>\d+)?")
 				.unwrap();
-	}
+	// }
 
 	let text_copy = text.clone();
 
-	let result: Cow<str> = LINK_REGEX.replace_all(&text_copy, |caps: &Captures| {
+	let result: Cow<str> = link_regex.replace_all(&text_copy, |caps: &Captures| {
 		let cmd = caps.name("cmd").unwrap().as_str();
 		let name = caps
 			.name("arg1")

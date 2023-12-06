@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use once_cell::sync::Lazy;
+
 pub type CollectionName = &'static str;
 pub type CommandName = &'static str;
 pub type Url = &'static str;
@@ -53,25 +55,24 @@ pub const COLLECTIONS: &[Collection] = &[
 	},
 ];
 
-lazy_static! {
-		// Different view on the above meta that allows quick lookups by different parameters
-		pub static ref COMMANDS: HashMap<CommandName, &'static Collection> = {
-			let mut map = HashMap::new();
-			for item in COLLECTIONS {
-				for command in item.commands {
-					map.insert(*command, item);
-				}
-			}
-			map
-		};
+// Different view on the above meta that allows quick lookups by different parameters
+pub static COMMANDS: Lazy<HashMap<CommandName, &'static Collection>> = Lazy::new(|| {
+	let mut map = HashMap::new();
+	for item in COLLECTIONS {
+		for command in item.commands {
+			map.insert(*command, item);
+		}
+	}
+	map
+});
 
-		pub static ref COLLECTION_NAMES: Vec<CollectionName> = {
-			COLLECTIONS
-			.iter().flat_map(|c| c.collections)
-			.copied()
-			.collect::<Vec<_>>()
-		};
-}
+pub static COLLECTION_NAMES: Lazy<Vec<CollectionName>> = Lazy::new(|| {
+	COLLECTIONS
+		.iter()
+		.flat_map(|c| c.collections)
+		.copied()
+		.collect::<Vec<_>>()
+});
 
 impl Collection {
 	pub fn get_default_command(&self) -> CommandName {

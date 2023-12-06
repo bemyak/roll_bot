@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::db::LogMessage;
 use crate::get_unix_time;
 
 pub fn format_collection_metadata(meta: ejdb::meta::DatabaseMetadata) -> String {

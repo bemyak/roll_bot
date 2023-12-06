@@ -1,17 +1,17 @@
 #![allow(dead_code)]
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate prometheus;
+// #[macro_use]
+// extern crate prometheus;
 
 mod collection;
 mod commands;
+// mod db_new;
+mod cache;
 mod db;
 mod fetch;
 mod format;
-mod metrics;
+// mod metrics;
 mod telegram;
 
 use std::error::Error;
@@ -20,8 +20,13 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use cache::Cache;
+use collection::COLLECTION_NAMES;
+use futures::executor::block_on;
+use once_cell::sync::Lazy;
 use serde_json::Value as JsonValue;
 
+use tokio::sync::RwLock;
 #[allow(unused_imports)]
 use tokio::task;
 use tokio::time;
@@ -31,15 +36,8 @@ use db::DndDatabase;
 pub const PROJECT_URL: &str = "https://gitlab.com/bemyak/roll_bot";
 pub const DONATION_URL: &str = "https://ko-fi.com/bemyak";
 
-lazy_static! {
-	static ref DB: DndDatabase = {
-		if env::var("ROLL_BOT_USE_TEST_DB").is_ok() {
-			DndDatabase::new("./test_data/roll_bot.ejdb").unwrap()
-		} else {
-			DndDatabase::new("./roll_bot.ejdb").unwrap()
-		}
-	};
-}
+static DB: Lazy<DndDatabase> = Lazy::new(|| block_on(DndDatabase::new()).unwrap());
+static CACHE: Lazy<RwLock<Cache>> = Lazy::new(|| RwLock::new(Cache::new()));
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -57,7 +55,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
 	};
 	simplelog::SimpleLogger::init(log_level, log_config)?;
 
-	task::spawn(async move { metrics::serve_metrics().await });
+	// task::spawn(async move { metrics::serve_metrics().await });
 
 	task::spawn(async move {
 		let mut interval = time::interval(Duration::from_secs(60 * 60 * 24));
@@ -78,7 +76,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
 async fn fetch() -> Result<(), Box<dyn Error + Send + Sync>> {
 	let changelog = fetch::fetch_changelog().await?;
 	let ver = get_latest_ver(&changelog);
-	let cur_ver = DB.get_version().ok().flatten();
+	let cur_ver = DB.get_version().await.ok().flatten();
 
 	if !should_update(cur_ver.as_ref(), ver) {
 		info!(
@@ -88,12 +86,20 @@ async fn fetch() -> Result<(), Box<dyn Error + Send + Sync>> {
 		return Ok(());
 	}
 
-	DB.save_collection(changelog, db::VER_COLLECTION_NAME)?;
+	DB.save_collection(db::VER_COLLECTION_NAME, &changelog)
+		.await?;
 	let data = fetch::fetch().await?;
+
+	// TODO: Make this parallel?
 	for (collection, items) in data {
-		DB.save_collection(items, &collection)?;
+		let Some(collection) = COLLECTION_NAMES.iter().find(|c| **c == collection) else {
+			error!("unknown collection: {collection}");
+			continue;
+		};
+		DB.save_collection(&collection, &items).await?;
+		let mut cache = CACHE.write().await;
+		cache.save(&collection, &items);
 	}
-	DB.update_cache();
 	Ok(())
 }
 

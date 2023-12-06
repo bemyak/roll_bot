@@ -1,6 +1,7 @@
-use super::{Capitalizable, Entry, EntryArrayUtils, EntryUtils, FilterJoinable, Optionable};
+use super::{
+	Capitalizable, Document, Entry, EntryArrayUtils, EntryUtils, FilterJoinable, Optionable,
+};
 use crate::DB;
-use ejdb::bson::{Bson, Document};
 use ordinal::Ordinal;
 
 use std::fmt::Write;

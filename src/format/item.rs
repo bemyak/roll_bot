@@ -1,77 +1,96 @@
 use super::{
-	abbreviation::Abbreviation, cost_to_string, Capitalizable, Entry, EntryArrayUtils,
-	FilterJoinable, Optionable,
+	abbreviation::Abbreviation, cost_to_string, Capitalizable, Document, Entry, EntryArrayUtils,
+	FilterJoinable, Optionable, ValueExt,
 };
 use crate::DB;
-use ejdb::bson::{Bson, Document};
+use async_trait::async_trait;
+use serde_json::Value;
 use std::fmt::Write;
 
+#[async_trait]
 pub trait Item: Entry {
 	// we need database to expand abbreviations
-	fn format_item(&self) -> Option<String>;
+	async fn format_item(&self) -> Option<String>;
 
-	fn get_type(&self) -> Option<String>;
+	fn get_type(&self) -> Option<&str>;
 	fn get_attune(&self) -> Option<String>;
 	fn get_value(&self) -> Option<i64>;
 	fn get_carrying_capacity(&self) -> Option<i64>;
 	fn get_ac(&self) -> Option<i64>;
-	fn get_dmg1(&self) -> Option<String>;
-	fn get_dmg_type(&self) -> Option<String>;
+	fn get_dmg1(&self) -> Option<&str>;
+	fn get_dmg_type(&self) -> Option<&str>;
 	fn get_speed(&self) -> Option<i64>;
-	fn get_bonus_ac(&self) -> Option<String>;
-	fn get_bonus_weapon_attack(&self) -> Option<String>;
-	fn get_ammo_type(&self) -> Option<String>;
+	fn get_bonus_ac(&self) -> Option<&str>;
+	fn get_bonus_weapon_attack(&self) -> Option<&str>;
+	fn get_ammo_type(&self) -> Option<&str>;
 	fn get_properties(&self) -> Option<Vec<&str>>;
 	fn get_weight(&self) -> Option<i64>;
-	fn get_loot_tables(&self) -> Option<Vec<String>>;
+	fn get_loot_tables(&self) -> Option<Vec<&str>>;
 
 	// For abbreviations
 
 	// get_tags collects tags bellow
-	fn get_tags(&self, type_: &Option<String>, abbr: &Option<Document>) -> Option<Vec<String>>;
+	fn get_tags(&self, type_: Option<&str>, abbr: Option<&Document>) -> Option<Vec<String>>;
 	// simple, martial
-	fn get_weapon_category(&self) -> Option<String>;
-	fn get_tier(&self) -> Option<String>;
-	fn get_rarity(&self) -> Option<String>;
+	fn get_weapon_category(&self) -> Option<&str>;
+	fn get_tier(&self) -> Option<&str>;
+	fn get_rarity(&self) -> Option<&str>;
 }
 
+#[async_trait]
 impl Item for Document {
-	fn format_item(&self) -> Option<String> {
+	async fn format_item(&self) -> Option<String> {
 		let mut s = format!("<b>{}</b>", self.get_name()?);
 
 		let type_ = self.get_type();
 		let (type_abbreviation, type_additional_abbreviation) = if let Some(type_) = &type_ {
 			(
 				DB.find_one_by("itemType", "abbreviation", type_)
+					.await
 					.ok()
+					.map(Value::into_object)
 					.flatten(),
 				DB.find_one_by("itemTypeAdditionalEntries", "appliesTo", type_)
+					.await
 					.ok()
+					.map(Value::into_object)
 					.flatten(),
 			)
 		} else {
 			(None, None)
 		};
 
-		let properties = self.get_properties();
-		let property_abbreviations = if let Some(properties) = &properties {
-			properties
-				.iter()
-				.filter_map(|p| DB.find_one_by("itemProperty", "abbreviation", p).ok())
-				.collect::<Vec<_>>()
-		} else {
-			Vec::new()
+		let property_abbreviations = {
+			let mut property_abbreviations = vec![];
+			if let Some(properties) = &self.get_properties() {
+				for property in properties {
+					if let Some(full_property) = DB
+						.find_one_by("itemProperty", "abbreviation", property)
+						.await
+						.ok()
+						.map(Value::into_object)
+						.flatten()
+					{
+						property_abbreviations.push(full_property);
+					}
+				}
+			}
+			property_abbreviations
 		};
 
 		let tags = self
-			.get_tags(&type_, &type_abbreviation)
+			.get_tags(type_, type_abbreviation.as_ref())
 			.map(|t| t.join(", "));
 		let tier = self.get_tier().map(|t| format!("{t} tier"));
 		let rarity = self.get_rarity();
 
-		let meta = vec![tags, tier, rarity]
-			.filter_join(", ")
-			.map(|s| s.capitalize());
+		let meta = vec![
+			tags.as_ref().map(String::as_str),
+			tier.as_ref().map(String::as_str),
+			rarity,
+		]
+		.filter_join(", ")
+		.map(|s| s.capitalize());
 		if let Some(meta) = meta {
 			write!(s, "\n<i>{meta}</i>").ok()?;
 		}
@@ -105,7 +124,7 @@ impl Item for Document {
 		}
 
 		if let Some(ammo_type) = self.get_ammo_type() {
-			write!(s, "\n<b>Ammo Type</b>: {ammo_type}").ok()?;
+			write!(s, "\n<b>Ammo Type</b>: {{@item {ammo_type}}}").ok()?;
 		}
 
 		if let Some(bonus_ac) = self.get_bonus_ac() {
@@ -125,7 +144,7 @@ impl Item for Document {
 			write!(s, "\n\n{}", &entries.join("\n")).ok()?;
 		}
 		for t in property_abbreviations {
-			if let Some(entries) = t.and_then(|t| t.get_entries("entries")) {
+			if let Some(entries) = t.get_entries("entries") {
 				write!(s, "\n\n{}", &entries.join("\n")).ok()?;
 			}
 		}
@@ -139,14 +158,12 @@ impl Item for Document {
 
 		Some(s)
 	}
-	fn get_tags(&self, type_: &Option<String>, abbr: &Option<Document>) -> Option<Vec<String>> {
+	fn get_tags(&self, type_: Option<&str>, abbr: Option<&Document>) -> Option<Vec<String>> {
 		let mut tags = vec![self.get_weapon_category()];
 
-		let mut push_bool = |tag_name: &str| {
-			if let Ok(tag) = self.get_bool(tag_name) {
-				if tag {
-					tags.push(Some(tag_name.to_string()))
-				}
+		let mut push_bool = |tag_name: &'static str| {
+			if let Some(true) = self.get(tag_name).map(Value::as_bool).flatten() {
+				tags.push(Some(tag_name))
 			}
 		};
 
@@ -161,39 +178,47 @@ impl Item for Document {
 		push_bool("sentient");
 		push_bool("poison");
 
-		tags.push(expand_type_abbreviation(self, type_, abbr));
+		let expanded = expand_type_abbreviation(self, type_, abbr);
+		tags.push(expanded.as_ref().map(String::as_str));
 
-		Some(tags.into_iter().flatten().collect())
+		// TODO: Do not copy?
+		Some(
+			tags.into_iter()
+				.filter_map(|s| s)
+				.map(|s| s.to_owned())
+				.collect(),
+		)
 	}
-	fn get_rarity(&self) -> Option<String> {
-		self.get_str("rarity").ok().map(|rarity| match rarity {
-			"none" => "mundane".to_string(),
-			"unknown" => "miscellaneous mundane".to_string(),
-			"unknown (magic)" => "miscellaneous magical".to_string(),
-			_ => rarity.to_string(),
+	fn get_rarity(&self) -> Option<&str> {
+		let rarity = self.get("rarity")?.as_str()?;
+		Some(match rarity {
+			"none" => "mundane",
+			"unknown" => "miscellaneous mundane",
+			"unknown (magic)" => "miscellaneous magical",
+			_ => rarity,
 		})
 	}
 	fn get_ac(&self) -> Option<i64> {
-		self.get_i64("ac").ok()
+		self.get("ac")?.as_i64()
 	}
-	fn get_type(&self) -> Option<String> {
-		self.get_str("type").map(str::to_string).ok()
+	fn get_type(&self) -> Option<&str> {
+		self.get("type")?.as_str()
 	}
-	fn get_tier(&self) -> Option<String> {
-		self.get_str("tier").map(str::to_string).ok()
+	fn get_tier(&self) -> Option<&str> {
+		self.get("tier")?.as_str()
 	}
 	fn get_carrying_capacity(&self) -> Option<i64> {
-		self.get_i64("carryingCapacity").ok()
+		self.get("carryingCapacity")?.as_i64()
 	}
 	fn get_weight(&self) -> Option<i64> {
-		self.get_i64("weight").ok()
+		self.get("weight")?.as_i64()
 	}
 	fn get_properties(&self) -> Option<Vec<&str>> {
-		self.get_array_of("property", Bson::as_str)?.into_option()
+		self.get_array_of("property", Value::as_str)?.into_option()
 	}
 	fn get_attune(&self) -> Option<String> {
 		let base = "requires attunement".to_string();
-		let b = self.get_bool("reqAttune").ok();
+		let b = self.get("reqAttune").map(Value::as_bool).flatten();
 		if let Some(b) = b {
 			if b {
 				return Some(base);
@@ -202,48 +227,45 @@ impl Item for Document {
 			}
 		}
 
-		let s = self.get_str("reqAttune").ok()?;
+		let s = self.get("reqAttune")?.as_str()?;
 		Some(base + " " + s)
 	}
-	fn get_dmg1(&self) -> Option<String> {
-		self.get_str("dmg1").map(str::to_string).ok()
+	fn get_dmg1(&self) -> Option<&str> {
+		self.get("dmg1")?.as_str()
 	}
-	fn get_dmg_type(&self) -> Option<String> {
-		self.get_str("dmgType")
-			.map(|dmg_type| match dmg_type {
-				"A" => "acid",
-				"B" => "bludgeoning",
-				"C" => "cold",
-				"F" => "fire",
-				"O" => "force",
-				"L" => "lightning",
-				"N" => "necrotic",
-				"P" => "piercing",
-				"I" => "poison",
-				"Y" => "psychic",
-				"R" => "radiant",
-				"S" => "slashing",
-				"T" => "thunder",
-				_ => dmg_type,
-			})
-			.map(str::to_string)
-			.ok()
+	fn get_dmg_type(&self) -> Option<&str> {
+		let dmg_type = self.get("dmgType")?.as_str()?;
+		Some(match dmg_type {
+			"A" => "acid",
+			"B" => "bludgeoning",
+			"C" => "cold",
+			"F" => "fire",
+			"O" => "force",
+			"L" => "lightning",
+			"N" => "necrotic",
+			"P" => "piercing",
+			"I" => "poison",
+			"Y" => "psychic",
+			"R" => "radiant",
+			"S" => "slashing",
+			"T" => "thunder",
+			_ => dmg_type,
+		})
 	}
 	fn get_speed(&self) -> Option<i64> {
-		self.get_i64("speed").ok()
+		self.get("speed")?.as_i64()
 	}
-	fn get_weapon_category(&self) -> Option<String> {
-		self.get_str("weaponCategory").map(str::to_string).ok()
+	fn get_weapon_category(&self) -> Option<&str> {
+		self.get("weaponCategory")?.as_str()
 	}
 	fn get_value(&self) -> Option<i64> {
-		self.get_i64("value").ok()
+		self.get("value")?.as_i64()
 	}
-	fn get_loot_tables(&self) -> Option<Vec<String>> {
-		let properties = self.get_array("lootTables").ok()?;
+	fn get_loot_tables(&self) -> Option<Vec<&str>> {
+		let properties = self.get("lootTables")?.as_array()?;
 		let properties = properties
 			.iter()
-			.filter_map(Bson::as_str)
-			.map(|property| property.to_string())
+			.filter_map(Value::as_str)
 			.collect::<Vec<_>>();
 		if properties.is_empty() {
 			None
@@ -251,23 +273,21 @@ impl Item for Document {
 			Some(properties)
 		}
 	}
-	fn get_bonus_ac(&self) -> Option<String> {
-		self.get_str("bonusAc").map(str::to_string).ok()
+	fn get_bonus_ac(&self) -> Option<&str> {
+		self.get("bonusAc")?.as_str()
 	}
-	fn get_bonus_weapon_attack(&self) -> Option<String> {
-		self.get_str("bonusWeaponAttack").map(str::to_string).ok()
+	fn get_bonus_weapon_attack(&self) -> Option<&str> {
+		self.get("bonusWeaponAttack")?.as_str()
 	}
-	fn get_ammo_type(&self) -> Option<String> {
-		self.get_str("ammoType")
-			.map(|at| format!("{{@item {at}}}"))
-			.ok()
+	fn get_ammo_type(&self) -> Option<&str> {
+		self.get("ammoType")?.as_str()
 	}
 }
 
-fn expand_type_abbreviation(
-	item: &Document,
-	type_: &Option<String>,
-	abbr: &Option<Document>,
+fn expand_type_abbreviation<'a>(
+	item: &'a Document,
+	type_: Option<&'a str>,
+	abbr: Option<&'a Document>,
 ) -> Option<String> {
 	let type_ = type_.as_ref()?;
 	if let Some(abbr) = abbr {

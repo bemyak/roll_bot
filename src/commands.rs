@@ -10,7 +10,7 @@ use crate::{
 pub enum RollBotCommands {
 	Help(HelpOptions),
 	Roll(String),
-	Stats,
+	// Stats,
 	Query((&'static Collection, String)),
 	Echo(String),
 	Error(String),
@@ -91,7 +91,7 @@ impl BotCommands for RollBotCommands {
 			"roll" | "r" => roll_dice(&args)
 				.map(Self::Roll)
 				.or_else(|err| Ok(Self::Error(err.to_string()))),
-			"stats" => Ok(Self::Stats),
+			// "stats" => Ok(Self::Stats),
 			"echo" => Ok(Self::Echo(args.escape_html())),
 			_ => {
 				if let Some(item) = COMMANDS.get(cmd.as_str()) {

@@ -1,5 +1,4 @@
-use super::{Capitalizable, Entry, FilterJoinable, Optionable};
-use ejdb::bson::Document;
+use super::{Capitalizable, Entry, FilterJoinable, Optionable, Document};
 use ordinal::Ordinal;
 
 use std::fmt::Write;
