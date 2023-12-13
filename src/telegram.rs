@@ -101,6 +101,13 @@ pub enum BotError {
 }
 
 async fn process_message(msg: Message, bot: RollBot) -> Result<(), BotError> {
+	trace!(
+		"Got reply from @{}: {}",
+		msg.from()
+			.map(|user| user.username.as_ref().unwrap_or(&user.first_name).as_str())
+			.unwrap_or("unknown"),
+		msg.text().unwrap_or_default()
+	);
 	let (collection, item_name) = extract_search_data_from_reply(&msg)
 		.ok_or_else(|| BotError::BadReply(msg.text().unwrap_or_default().to_owned()))?;
 	search_item(msg.clone(), bot, collection, item_name).await?;
