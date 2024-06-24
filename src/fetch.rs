@@ -8,7 +8,7 @@ use serde_json::Value as JsonValue;
 
 use crate::collection::*;
 
-const BASE_URL: &str = "https://5etools-mirror-1.github.io/data";
+const BASE_URL: &str = "https://5etools-mirror-2.github.io/data";
 const CHANGELOG_URL: &str = "/changelog.json";
 const INDEX: &str = "/index.json";
 const EXTENSION: &str = ".json";
