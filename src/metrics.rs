@@ -1,10 +1,15 @@
-use std::error::Error;
+use std::{error::Error, net::SocketAddr};
 
+use http_body_util::Full;
 use hyper::{
-	service::{make_service_fn, service_fn},
-	Body, Method, Request, Response, Server, StatusCode,
+	body::{Bytes, Incoming},
+	server::conn::http1,
+	service::service_fn,
+	Method, Request, Response, StatusCode,
 };
+use hyper_util::rt::TokioIo;
 use prometheus::{Encoder, HistogramVec, IntCounterVec, IntGaugeVec, TextEncoder};
+use tokio::net::TcpListener;
 
 pub const METRICS_PORT: u16 = 9889;
 pub const METRICS_ENDPOINT: &str = "/metrics";
@@ -42,25 +47,39 @@ lazy_static! {
 }
 
 pub async fn serve_metrics() -> Result<(), Box<dyn Error + Send + Sync>> {
-	let metrics_addr = ([0, 0, 0, 0], METRICS_PORT).into();
-	let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(metrics)) });
-	info!(
-		"Serving metrics at http://{}{}",
-		metrics_addr, METRICS_ENDPOINT
-	);
-	let server = Server::bind(&metrics_addr).serve(service);
-	server.await?;
-	Ok(())
+	let metrics_addr = SocketAddr::from(([0, 0, 0, 0], METRICS_PORT));
+	let listener = TcpListener::bind(metrics_addr).await?;
+	loop {
+		let (stream, _) = listener.accept().await?;
+
+		// Use an adapter to access something implementing `tokio::io` traits as if they implement
+		// `hyper::rt` IO traits.
+		let io = TokioIo::new(stream);
+
+		info!("Serving metrics on {metrics_addr}");
+
+		// Spawn a tokio task to serve multiple connections concurrently
+		tokio::task::spawn(async move {
+			// Finally, we bind the incoming connection to our `hello` service
+			if let Err(err) = http1::Builder::new()
+				// `service_fn` converts our function in a `Service`
+				.serve_connection(io, service_fn(metrics))
+				.await
+			{
+				error!("Error serving connection: {:?}", err);
+			}
+		});
+	}
 }
 
-async fn metrics(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+async fn metrics(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
 	match (req.method(), req.uri().path()) {
 		(&Method::GET, METRICS_ENDPOINT) => {
 			let encoder = TextEncoder::new();
 			let metric_families = prometheus::gather();
 			let mut buffer = vec![];
 			encoder.encode(&metric_families, &mut buffer).unwrap();
-			Ok(Response::new(Body::from(buffer)))
+			Ok(Response::new(Full::new(Bytes::from(buffer))))
 		}
 		_ => {
 			let mut not_found = Response::default();

@@ -57,7 +57,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
 	};
 	simplelog::SimpleLogger::init(log_level, log_config)?;
 
-	task::spawn(async move { metrics::serve_metrics().await });
+	task::spawn(metrics::serve_metrics());
 
 	task::spawn(async move {
 		let mut interval = time::interval(Duration::from_secs(60 * 60 * 24));
