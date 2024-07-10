@@ -367,7 +367,12 @@ async fn search_item(
 	let exact_match_result = lookup_item
 		.collections
 		.iter()
-		.filter_map(|collection| DB.get_item(collection, arg).ok().flatten())
+		.filter_map(|collection| {
+			DB.get_item(collection, arg).ok().flatten().or_else(|| {
+				let with_default_source = arg.to_owned() + " (PHB)"; // TODO: Do not hardcode this?
+				DB.get_item(collection, &with_default_source).ok().flatten()
+			})
+		})
 		.next();
 
 	match exact_match_result {

@@ -1,3 +1,5 @@
+use crate::DB;
+
 use super::{Capitalizable, Entry, FilterJoinable, Optionable};
 use ejdb::bson::Document;
 use ordinal::Ordinal;
@@ -10,6 +12,7 @@ pub trait Spell: Entry {
 	fn get_range(&self) -> Option<String>;
 	fn get_components(&self) -> Option<String>;
 	fn get_duration(&self) -> Option<String>;
+	fn get_classes(&self) -> Option<Vec<String>>;
 
 	fn format_spell(&self) -> Option<String>;
 }
@@ -110,6 +113,28 @@ impl Spell for Document {
 			.into_option()
 	}
 
+	fn get_classes(&self) -> Option<Vec<String>> {
+		let search_name = dbg!(format!(
+			"{} ({})",
+			self.get_name()?,
+			self.get_str("source").ok()?
+		));
+		let refs = DB.get_item("spell_sources", &search_name).ok()??;
+		let classes = dbg!(refs.get("class")?.as_array()?);
+		Some(
+			classes
+				.into_iter()
+				.filter_map(|class| {
+					class
+						.as_document()?
+						.get("name")?
+						.as_str()
+						.map(str::to_owned)
+				})
+				.collect(),
+		)
+	}
+
 	fn format_spell(&self) -> Option<String> {
 		let mut s = format!("<b>{}</b>", self.get_name()?);
 
@@ -141,6 +166,10 @@ impl Spell for Document {
 
 		if let Some(entries_high_level) = self.get_entries("entriesHigherLevel") {
 			write!(s, "\n\n{}", &entries_high_level.join("\n")).ok()?;
+		}
+
+		if let Some(classes) = self.get_classes() {
+			write!(s, "\n\n<b>Classes</b>: {}", &classes.join(", ")).ok()?;
 		}
 
 		if let Some(source) = self.get_source() {

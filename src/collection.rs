@@ -41,7 +41,7 @@ pub const COLLECTIONS: &[Collection] = &[
 	},
 	Collection {
 		commands: &["spell", "s"],
-		urls: &["spells"],
+		urls: &["spells", "spells/sources.json"],
 		collections: &["spell"],
 		type_: CollectionType::Spell,
 	},

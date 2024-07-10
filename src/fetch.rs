@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use futures::future::{join_all, try_join_all, BoxFuture, FutureExt};
 
-use serde_json::Value as JsonValue;
+use serde_json::{Map, Value as JsonValue};
 
 use crate::collection::*;
 
@@ -94,6 +94,23 @@ async fn download(url: String) -> Result<Vec<JsonValue>, Box<dyn Error + Send + 
 			info!("Successfully get url: {}", file_url);
 			let text = response.text().await?;
 			let json: JsonValue = serde_json::from_str(&text)?;
+
+			if url.ends_with("spells/sources.json") {
+				let mut new_array = Vec::new();
+				for (source, spells) in json.as_object().unwrap() {
+					for (spell_name, spell) in spells.as_object().unwrap() {
+						let mut new_spell = spell.as_object().unwrap().clone();
+						new_spell.insert("source".to_string(), JsonValue::String(source.clone()));
+						new_spell.insert("name".to_string(), JsonValue::String(spell_name.clone()));
+						println!("{:?}", new_spell);
+						new_array.push(JsonValue::Object(new_spell));
+					}
+				}
+				let mut root = Map::new();
+				root.insert("spell_sources".to_string(), JsonValue::Array(new_array));
+				return Ok(vec![JsonValue::Object(root)]);
+			}
+
 			Ok(vec![json])
 		}
 		(false, reqwest::StatusCode::NOT_FOUND) => download_indexed(url).await,
