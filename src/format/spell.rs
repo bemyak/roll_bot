@@ -116,21 +116,25 @@ impl Spell for Document {
 	fn get_classes(&self) -> Option<Vec<String>> {
 		let search_name = format!("{} ({})", self.get_name()?, self.get_str("source").ok()?);
 		let refs = DB.get_item("spell_sources", &search_name).ok()??;
-		let classes = refs.get("class")?.as_array()?;
-		let class_variant = refs.get("classVariant")?.as_array()?;
+		let classes = refs.get_array("class").ok()?.into_iter();
+		let class_variants = refs
+			.get_array("classVariant")
+			.ok()
+			.map(|class_variants| class_variants.into_iter())
+			.unwrap_or_default();
+
 		Some(
 			classes
-				.into_iter()
-				.chain(class_variant.into_iter())
+				.chain(class_variants)
 				.filter_map(|class| {
 					let doc = class.as_document()?;
-					doc.get("name")?.as_str().map(|class| {
-						if let Ok(source) = doc.get_str("definedInSource") {
-							format!("{class} ({source} variant)")
-						} else {
-							class.to_string()
-						}
-					})
+					let class_name = doc.get_str("name").ok();
+					let source = doc.get_str("definedInSource").ok();
+					if let (Some(class_name), Some(source)) = (class_name, source) {
+						Some(format!("{class_name} ({source} variant)"))
+					} else {
+						class_name.map(|class| class.to_string())
+					}
 				})
 				.collect(),
 		)
