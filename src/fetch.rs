@@ -102,7 +102,6 @@ async fn download(url: String) -> Result<Vec<JsonValue>, Box<dyn Error + Send + 
 						let mut new_spell = spell.as_object().unwrap().clone();
 						new_spell.insert("source".to_string(), JsonValue::String(source.clone()));
 						new_spell.insert("name".to_string(), JsonValue::String(spell_name.clone()));
-						println!("{:?}", new_spell);
 						new_array.push(JsonValue::Object(new_spell));
 					}
 				}
